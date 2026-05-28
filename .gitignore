@@ -1,1 +1,63 @@
+# ============================================================
+# SleepQualityVisualization - Git 忽略规则
+# ============================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+*.manifest
+*.spec
+
+# 虚拟环境
+.venv/
+venv/
+env/
+ENV/
+
+# Conda
+.python-version
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+.Jupyter
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
+Thumbs.db
+
+# 系统文件
+Thumbs.db
+desktop.ini
+
+# 日志
+*.log
+logs/
+
+# 输出文件
+output/
+out/
+results/
+*.html
+*.png
+*.jpg
+*.pdf
+
+# 数据缓存
+*.pkl
+*.joblib
+*.h5
+*.hdf5

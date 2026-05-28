@@ -6,7 +6,7 @@
 ### Conda
 ```bash
 conda env create -f environment.yml
-conda activate sleep-viz
+conda activate sleepQualityVisualization
 ```
 
 ### pip（using Python 3.12.7 /w pip 26.1.1）

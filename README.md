@@ -15,4 +15,16 @@ pip install -r requirements.txt
 ```
 
 
-## 
+## Parts
+
+### 1.数据读取与预处理
+pandas处理
+
+### 2.数据分析
+
+
+### 3.机器学习建模
+
+
+### 4.可视化
+

@@ -17,8 +17,10 @@ conda env update -f environment.yml --prune
 
 ## Parts
 
-### 1.数据读取与预处理
-(Example source using data from my wristband. Format:XiaoMi Mi band 7nfc ver exported from zepp app)
+### 数据格式
+(Example source using data from my wristband.
+
+ Format:XiaoMi Mi band 7nfc ver exported from zepp app)
 Data format：
 
 ```
@@ -54,7 +56,24 @@ DATA/
 ```
 
 
-pandas处理
+### 预处理与数据导入
+
+pandas、numpy处理，导出csv文件
+File：```preprocess.py```
+Output：
+
+```
+OUTPUT/
+├── sleep_daily_preview.csv    # 每日睡眠汇总数据(csv format)
+│
+|
+├── sleep_daily.parquet     # 每日睡眠汇总数据(parquet format)
+|
+|
+└── fine/
+    └── sleep_fine_*.parquet               # 每天的具体数据
+```
+
 
 ### 2.数据分析
 

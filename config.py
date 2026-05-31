@@ -7,7 +7,7 @@ MYSQL_CONFIG = {
     "host": "127.0.0.1",
     "port": 3306,
     "user": "root",
-    "password": "root",          # ← 请在此填入你的 MySQL root 密码
+    "password": "root",          
     "database": "sleep_quality_db",
     "charset": "utf8mb4",
     "connect_timeout": 10,

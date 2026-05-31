@@ -61,3 +61,7 @@ results/
 *.joblib
 *.h5
 *.hdf5
+
+# others
+
+*.docx

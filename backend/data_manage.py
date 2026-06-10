@@ -1,8 +1,3 @@
-# ============================================================
-# 睡眠质量分析系统 - 数据管理模块 (data_manage)
-# 功能：CSV上传、数据预览、一键预处理、数据删除
-# ============================================================
-
 import os
 import sys
 import json
@@ -45,8 +40,8 @@ def _load_config():
 
 
 _cfg = _load_config()
-UPLOAD_FOLDER = _cfg.get("UPLOAD_FOLDER", "backend/uploads")
-MAX_SIZE_MB = int(_cfg.get("MAX_UPLOAD_SIZE_MB", "50"))
+UPLOAD_FOLDER = _cfg.get("UPLOAD_FOLDER", "uploads")
+MAX_SIZE_MB = int(_cfg.get("MAX_UPLOAD_SIZE_MB", "200"))
 ALLOWED_EXT = set(_cfg.get("ALLOWED_EXTENSIONS", "csv").split(","))
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)

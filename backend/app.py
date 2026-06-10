@@ -1,18 +1,3 @@
-# ============================================================
-# 睡眠质量分析系统 - Flask 主应用入口
-#
-# 启动方式：
-#   cd backend && python app.py
-#
-# 模块划分（一个功能一个 py 文件）：
-#   models.py      - 数据库模型
-#   auth.py        - 用户注册/登录/登出/权限
-#   data_manage.py - 数据上传/预览/预处理/删除
-#   visualize.py   - 可视化数据接口
-#   predict.py     - 睡眠质量预测/特征分析/建议
-#   admin.py       - 管理员全局统计/用户管理
-# ============================================================
-
 import os
 import sys
 import logging
@@ -146,7 +131,6 @@ if __name__ == "__main__":
     debug = _cfg.get("FLASK_DEBUG", "true").lower() == "true"
 
     log.info("=" * 60)
-    log.info("🌙 睡眠质量分析系统 v2.0 启动")
     log.info("   后端地址：http://%s:%s", host, port)
     log.info("   前端地址：http://localhost:%s", _cfg.get("FRONTEND_PORT", "3000"))
     log.info("   管理员账号：%s", _cfg.get("ADMIN_DEFAULT_USERNAME", "admin"))

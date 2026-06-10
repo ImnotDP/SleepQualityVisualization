@@ -29,8 +29,9 @@ log = logging.getLogger(__name__)
 
 # ---------- 路径 ----------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "DATA")
-OUTPUT_DIR = os.path.join(BASE_DIR, "OUTPUT")
+ROOT_DIR = os.path.dirname(BASE_DIR)  # backend/ 的上一级即项目根目录
+DATA_DIR = os.path.join(ROOT_DIR, "DATA")
+OUTPUT_DIR = os.path.join(ROOT_DIR, "OUTPUT")
 FINE_DIR = os.path.join(OUTPUT_DIR, "fine")
 
 DAILY_PARQUET = os.path.join(OUTPUT_DIR, "sleep_daily.parquet")

@@ -27,10 +27,35 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # ---------- 配置 ----------
-from config import MYSQL_CONFIG
+def _load_config(config_path: str) -> dict:
+    """从 config.txt (Key=Value 格式) 读取配置"""
+    cfg = {}
+    with open(config_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, val = line.split("=", 1)
+                cfg[key.strip()] = val.strip()
+    return cfg
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_DIR = os.path.join(BASE_DIR, "OUTPUT")
+ROOT_DIR = os.path.dirname(BASE_DIR)
+CONFIG_PATH = os.path.join(BASE_DIR, "config.txt")
+_cfg = _load_config(CONFIG_PATH)
+
+MYSQL_CONFIG = {
+    "host": _cfg.get("MYSQL_HOST", "127.0.0.1"),
+    "port": int(_cfg.get("MYSQL_PORT", "3306")),
+    "user": _cfg.get("MYSQL_USER", "root"),
+    "password": _cfg.get("MYSQL_PASSWORD", "root"),
+    "database": _cfg.get("MYSQL_DATABASE", "sleep_quality_db"),
+    "charset": _cfg.get("MYSQL_CHARSET", "utf8mb4"),
+    "connect_timeout": int(_cfg.get("MYSQL_CONNECT_TIMEOUT", "10")),
+}
+
+OUTPUT_DIR = os.path.join(ROOT_DIR, "OUTPUT")
 FINE_DIR = os.path.join(OUTPUT_DIR, "fine")
 DAILY_PARQUET = os.path.join(OUTPUT_DIR, "sleep_daily.parquet")
 

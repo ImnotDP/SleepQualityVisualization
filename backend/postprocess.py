@@ -16,8 +16,9 @@ import numpy as np
 import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FINE_DIR = os.path.join(BASE_DIR, "OUTPUT", "fine")
-OUT_PATH = os.path.join(BASE_DIR, "OUTPUT", "secondary_processed.csv")
+ROOT_DIR = os.path.dirname(BASE_DIR)  # backend/ 的上一级即项目根目录
+FINE_DIR = os.path.join(ROOT_DIR, "OUTPUT", "fine")
+OUT_PATH = os.path.join(ROOT_DIR, "OUTPUT", "secondary_processed.csv")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)

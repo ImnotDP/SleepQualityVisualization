@@ -1,5 +1,6 @@
 # ============================================================
 # SleepQualityVisualization - Git 忽略规则
+# 与 README.md 项目结构对应，忽略运行时生成文件与敏感配置
 # ============================================================
 
 # Python
@@ -40,21 +41,18 @@ ENV/
 Thumbs.db
 
 # 系统文件
-Thumbs.db
 desktop.ini
 
 # 日志
 *.log
 logs/
 
-# 输出文件
-output/
-out/
-results/
-*.html
-*.png
-*.jpg
-*.pdf
+# 运行时生成数据（不纳入版本控制）
+OUTPUT/
+DATA/
+
+# 上传文件临时目录
+backend/uploads/
 
 # 数据缓存
 *.pkl
@@ -62,6 +60,19 @@ results/
 *.h5
 *.hdf5
 
-# others
+# 前端
+frontend/node_modules/
+frontend/dist/
 
+# 输出文件
+*.html
+*.png
+*.jpg
+*.pdf
+
+# 敏感配置覆盖文件
+config.local.txt
+backend/config.local.txt
+
+# others
 *.docx

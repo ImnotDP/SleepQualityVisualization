@@ -119,7 +119,7 @@ def _init_db():
 # ---------- 根路由 ----------
 @app.route("/")
 def index():
-    return {"service": "睡眠质量分析系统 API", "version": "2.0"}
+    return {"service": "睡眠质量分析系统 API", "version": "0.0.1"}
 
 
 # ---------- 启动 ----------
@@ -133,8 +133,6 @@ if __name__ == "__main__":
     log.info("=" * 60)
     log.info("   后端地址：http://%s:%s", host, port)
     log.info("   前端地址：http://localhost:%s", _cfg.get("FRONTEND_PORT", "3000"))
-    log.info("   管理员账号：%s", _cfg.get("ADMIN_DEFAULT_USERNAME", "admin"))
-    log.info("   调试模式：%s", debug)
     log.info("=" * 60)
 
     app.run(host=host, port=port, debug=debug)

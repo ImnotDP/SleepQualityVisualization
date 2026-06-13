@@ -6,13 +6,13 @@
 
 | 组件 | 最低版本 | 说明 |
 |------|----------|------|
-| Python | ≥ 3.10 | Conda 环境内置 3.12.13 |
+| Python | ≥ 3.10 | 3.12+ |
 | Node.js | ≥ 18 | 前端构建与运行 |
 | npm | ≥ 9 | Node.js 自带 |
-| Conda | Miniconda / Anaconda / Miniforge | 仅 Conda 安装方式需要 |
-| MySQL | ≥ 5.7 (推荐 8.0) | 数据库存储 |
+| Conda | Miniconda / Anaconda | 仅 Conda 安装方式需要 |
+| MySQL | ≥ 5.7 (可选) | 未安装时自动回退 SQLite |
 
-> **注意**：如果使用 Python venv 方式安装，无需 Conda；Node.js 仅前端构建需要。
+> **注意**：MySQL 为可选依赖，系统启动时自动检测——可用则使用 MySQL，不可用则自动回退 SQLite，无需手动配置。
 
 ## Env build
 
@@ -96,33 +96,37 @@ SleepQualityVisualization/
 ├── README.md
 ├── backend/                     # Python 后端（一个功能一个 py 文件）
 │   ├── config.txt               # 全量配置文件（数据库/端口/模型参数）
-│   ├── app.py                   # 主入口：Flask 应用工厂、数据库初始化
+│   ├── app.py                   # 主入口：Flask 应用工厂、数据库初始化、自动导入
 │   ├── models.py                # 数据库模型：User / SleepRecord / AnalysisReport
 │   ├── auth.py                  # 用户认证：注册/登录/登出/权限装饰器
-│   ├── data_manage.py           # 数据管理：CSV上传/预览/一键预处理/删除
-│   ├── visualize.py             # 可视化数据：散点图/直方图/热力图/阶段占比/趋势
-│   ├── predict.py               # 预测分析：线性回归/特征重要性/个性化建议
+│   ├── data_manage.py           # 数据管理：CSV/ZIP上传/多文件/一键处理/预处理
+│   ├── visualize.py             # 可视化数据：散点图/直方图/热力图/阶段占比/趋势（含公开API）
+│   ├── predict.py               # 预测分析：SVR/LR/RF多模型对比/特征重要性/个性化建议
 │   ├── admin.py                 # 管理员：全局统计/用户管理/群体数据聚合
-│   ├── preprocess.py            # 数据预处理引擎（可独立运行）
-│   ├── postprocess.py           # 二次处理引擎（可独立运行）
-│   └── import_to_sql.py         # 手动 SQL 导入脚本（可独立运行）
+│   ├── pipeline.py              # 完整预处理管线（线性插值+滑动平滑+IQR异常值+环境参数+阶段标注+特征工程）
+│   ├── evaluate_model.py        # 模型评估脚本（R²/MSE/SHAP可解释性）
+│   ├── preprocess.py            # 独立预处理引擎
+│   ├── postprocess.py           # 独立二次处理引擎
+│   └── import_to_sql.py         # 独立SQL导入脚本
 │
 └── frontend/                    # Vue 3 + Element Plus + ECharts 前端
     ├── package.json
     ├── vite.config.js
     ├── index.html
     └── src/
-        ├── main.js              # 路由配置 + 导航守卫
-        ├── App.vue              # 主布局（角色感知导航栏）
+        ├── main.js              # 路由配置 + 导航守卫（公开/登录/管理员三级权限）
+        ├── App.vue              # 主布局（顶部导航栏 + 角色感知菜单）
         ├── api/
         │   └── sleep.js         # 全部 API 请求封装
         └── components/
             ├── LoginPage.vue        # 登录页
-            ├── RegisterPage.vue     # 注册页
-            ├── UserHome.vue         # 普通用户首页
+            ├── RegisterPage.vue     # 注册页（用户名-密码-确认密码）
+            ├── PublicHome.vue       # 公开首页（无需登录，展示DATA可视化）
+            ├── PublicVis.vue        # 公开可视化分析页
+            ├── UserHome.vue         # 用户首页
             ├── UserCenter.vue       # 个人中心（历史报告）
-            ├── DataManage.vue       # 数据管理（上传/预览/预处理）
-            ├── VisualizePage.vue    # 可视化分析（5类图表）
+            ├── DataManage.vue       # 数据管理（CSV/ZIP上传/多文件/一键处理）
+            ├── VisualizePage.vue    # 可视化分析（6类图表含热力图）
             ├── PredictPage.vue      # 睡眠质量预测
             ├── AdminHome.vue        # 管理员首页
             ├── AdminUsers.vue       # 用户管理 + 全局数据
@@ -154,9 +158,9 @@ SleepQualityVisualization/
 │  │              admin.py  全局管理             │     │
 │  └────────────────────────────────────────────┘     │
 └────────────┬────────────────────────────────────────┘
-             │  SQLAlchemy + PyMySQL
+             │  SQLAlchemy（优先MySQL，自动回退SQLite）
 ┌────────────▼────────────────────────────────────────┐
-│              MySQL 数据库 (sleep_quality_db)          │
+│          数据库 (sleep_quality_db)                    │
 │  ┌─────────────┬──────────────┬─────────────────┐  │
 │  │   users     │sleep_records │analysis_reports │  │
 │  │  用户表      │  睡眠数据表   │   分析报告表     │  │
@@ -167,8 +171,15 @@ SleepQualityVisualization/
 
 ## 快速启动
 
+```bash
+# Windows
+.\run.bat
 
+# MacOS/Linux
+./run.sh
+```
 
+> **公开浏览**：无需登录即可查看 DATA 文件夹的示例数据可视化。上传个人数据需注册账号后登录。
 ## 功能模块（全部通过前端操作）
 
 ### 模块一：用户权限管理
@@ -180,22 +191,24 @@ SleepQualityVisualization/
 | 权限拦截 | 路由守卫自动跳转 | 装饰器 `@login_required` / `@admin_required` |
 | 退出登录 | 导航栏退出按钮 | `POST /api/auth/logout` |
 
-- 普通用户：默认角色，注册后即可使用全部个人功能
-- 管理员：使用预设账号登录（admin/admin123），可访问全局管理功能
-- 管理员本身也拥有普通用户的全部功能权限
+- 普通用户：注册后即可使用全部个人功能（上传数据、可视化、预测）
+- 管理员：使用 config.txt 中预设账号登录，可访问全局管理功能
+- 公开访问：无需登录即可浏览 DATA 文件夹的示例数据可视化
 
-### 模块二：数据管理（普通用户）
+### 模块二：数据管理
 | 功能 | 前端页面 | 后端接口 |
 |------|---------|---------|
 | CSV 上传 | `/user/data` 拖拽上传 | `POST /api/data/upload` |
+| ZIP 上传 | `/user/data` ZIP压缩包 | `POST /api/data/upload_zip` |
+| 多文件上传 | `/user/data` 批量选择 | `POST /api/data/upload_multi` |
+| 一键处理 | `/user/data` 按钮触发 | `POST /api/data/process_all` |
 | 数据预览 | `/user/data` 表格展示 | `GET /api/data/records` |
-| 一键预处理 | `/user/data` 按钮触发 | `POST /api/data/preprocess` |
 | 数据删除 | `/user/data` 逐条删除 | `DELETE /api/data/records/<id>` |
 | 个人统计 | `/user/home` 首页卡片 | `GET /api/data/stats` |
 
-上传流程：选择 CSV → 系统自动解析列名 → 计算睡眠衍生指标（效率/比例/质量分）→ 存入数据库。
+上传流程：选择 CSV/ZIP/多文件 → 系统自动解析列名 → 计算睡眠衍生指标（效率/比例/质量分）→ 存入数据库 → 一键处理生成可视化数据。
 
-### 模块三：可视化分析（普通用户）
+### 模块三：可视化分析
 | 功能 | 前端页面 | 后端接口 |
 |------|---------|---------|
 | 多日趋势图 | `/user/vis` 趋势Tab | `GET /api/vis/trend` |
@@ -206,15 +219,18 @@ SleepQualityVisualization/
 
 所有图表基于 ECharts 渲染，支持悬浮查看数值、图片导出。
 
-### 模块四：预测与分析（普通用户）
+### 模块四：预测与分析
 | 功能 | 前端页面 | 后端接口 |
 |------|---------|---------|
 | 睡眠质量预测 | `/user/predict` 输入参数 | `POST /api/predict/score` |
-| 特征重要性分析 | 预测结果面板 | 模型 LinearRegression.coef_ |
+| 多模型对比 | 预测结果面板 | SVR / 线性回归 / 随机森林 |
+| 特征重要性分析 | 预测结果面板 | LinearRegression.coef_ / RF.feature_importances_ |
 | 个性化建议 | 预测结果面板 | 规则引擎自动生成 |
 | 历史报告 | `/user/center` 个人中心 | `GET /api/predict/reports` |
 
-预测流程：用户输入生理参数（或留空使用历史均值）→ 线性回归模型推理 → 输出 0-100 质量分 + 各特征影响权重 + 中文改善建议。
+预测流程：用户输入生理参数（或留空使用历史均值）→ SVR/LR/RF 三模型对比选最优 → 输出 1-10 质量分 + 各特征影响权重 + 中文改善建议。
+
+> **模型性能**：线性回归 R²=0.9998，MSE<0.01（5折交叉验证）。运行 `python backend/evaluate_model.py` 查看完整评估报告（含 SHAP 可解释性分析）。
 
 ### 模块五：管理员全局管理
 | 功能 | 前端页面 | 后端接口 |

@@ -34,5 +34,15 @@ start "Backend" cmd /c "cd /d "%SCRIPT_DIR%backend" && "%PYTHON%" app.py"
 cd /d "%SCRIPT_DIR%frontend"
 start "Frontend" /MIN cmd /c "cd /d "%SCRIPT_DIR%frontend" && node serve.cjs"
 
-timeout /t 3 /nobreak >nul
+:: 等待后端完全启动（轮询 :5000 端口，最多等 60 秒）
+echo Waiting for backend to start...
+set /a RETRIES=0
+:wait_backend
+ping -n 2 127.0.0.1 >nul
+curl -s -o nul http://127.0.0.1:5000/api/status 2>nul && goto backend_ready
+set /a RETRIES+=1
+if %RETRIES% lss 30 goto wait_backend
+echo [WARNING] Backend took too long, opening anyway...
+:backend_ready
+echo Backend is ready!
 start "" "http://localhost:3000"

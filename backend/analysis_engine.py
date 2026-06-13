@@ -1,8 +1,3 @@
-# ============================================================
-# 睡眠质量分析引擎 - 核心模块
-# 功能：预处理 → 特征工程 → 多模型训练 → 评估 → 可视化数据生成
-# ============================================================
-
 import os, logging, json
 import numpy as np
 import pandas as pd
@@ -27,9 +22,6 @@ DATA_DIR = os.path.join(ROOT_DIR, "DATA")
 SEED = 42
 np.random.seed(SEED)
 
-# ============================================================
-# Part 1: 数据加载与预处理
-# ============================================================
 
 def load_raw_data(data_dir: str = DATA_DIR) -> dict:
     """加载 DATA/ 下所有 CSV，返回 {key: DataFrame}"""
@@ -134,9 +126,6 @@ def extract_features(daily_df: pd.DataFrame,
     return df
 
 
-# ============================================================
-# Part 2: 睡眠质量评分模型
-# ============================================================
 
 def compute_sleep_score(deep_ratio: float, rem_ratio: float,
                         efficiency: float, wake_ratio: float) -> float:
@@ -212,9 +201,6 @@ def train_regression_models(X: np.ndarray, y: np.ndarray) -> dict:
     return results
 
 
-# ============================================================
-# Part 3: 睡眠阶段分类模型
-# ============================================================
 
 def train_classification_models(X: np.ndarray, y: np.ndarray,
                                 class_names: list = None) -> dict:
@@ -292,9 +278,6 @@ def train_classification_models(X: np.ndarray, y: np.ndarray,
     return results
 
 
-# ============================================================
-# Part 4: 综合评分与建议
-# ============================================================
 
 def generate_sleep_report(features: dict, model_results: dict) -> dict:
     """
@@ -351,9 +334,6 @@ def generate_sleep_report(features: dict, model_results: dict) -> dict:
     }
 
 
-# ============================================================
-# Part 5: 可视化数据生成
-# ============================================================
 
 def generate_visualization_data(daily_df: pd.DataFrame) -> dict:
     """
@@ -435,9 +415,6 @@ def generate_visualization_data(daily_df: pd.DataFrame) -> dict:
     }
 
 
-# ============================================================
-# Part 6: 自动化分析管线
-# ============================================================
 
 def run_auto_analysis(data_dir: str = DATA_DIR) -> dict:
     """
@@ -584,9 +561,6 @@ def _build_daily_from_raw(raw: dict) -> pd.DataFrame:
     return df
 
 
-# ============================================================
-# 独立运行入口
-# ============================================================
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO,

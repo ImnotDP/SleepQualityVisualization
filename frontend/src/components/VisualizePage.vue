@@ -32,11 +32,11 @@ import { ref, onMounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart, BarChart, PieChart, ScatterChart } from 'echarts/charts'
+import { LineChart, BarChart, PieChart, ScatterChart, HeatmapChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent, ToolboxComponent, VisualMapComponent } from 'echarts/components'
 import { getTrendData, getScatterData, getHistogramData, getCorrelationData, getStagePieData } from '../api/sleep'
 
-use([CanvasRenderer,LineChart,BarChart,PieChart,ScatterChart,TitleComponent,TooltipComponent,LegendComponent,GridComponent,ToolboxComponent,VisualMapComponent])
+use([CanvasRenderer,LineChart,BarChart,PieChart,ScatterChart,HeatmapChart,TitleComponent,TooltipComponent,LegendComponent,GridComponent,ToolboxComponent,VisualMapComponent])
 
 const activeTab = ref('trend')
 const trendOption = ref({})

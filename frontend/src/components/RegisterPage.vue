@@ -4,8 +4,8 @@
       <template #header><h2 style="text-align:center">📝 注册</h2></template>
       <el-form :model="form" label-width="0">
         <el-form-item><el-input v-model="form.username" placeholder="用户名（至少3位）" prefix-icon="User" /></el-form-item>
-        <el-form-item><el-input v-model="form.password" type="password" placeholder="密码（至少6位）" prefix-icon="Lock" show-password /></el-form-item>
-        <el-form-item><el-input v-model="form.password2" type="password" placeholder="确认密码" prefix-icon="Lock" show-password /></el-form-item>
+        <el-form-item><el-input v-model="form.password" type="password" placeholder="密码" prefix-icon="Lock" show-password /></el-form-item>
+        <el-form-item><el-input v-model="form.confirm_password" type="password" placeholder="确认密码" prefix-icon="Lock" show-password /></el-form-item>
         <el-form-item>
           <el-button type="primary" @click="doRegister" :loading="loading" style="width:100%">注 册</el-button>
         </el-form-item>
@@ -24,15 +24,15 @@ import { register } from '../api/sleep'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
-const form = reactive({ username: '', password: '', password2: '' })
+const form = reactive({ username: '', password: '', confirm_password: '' })
 const loading = ref(false)
 
 async function doRegister() {
   if (!form.username || !form.password) { ElMessage.warning('请填写所有字段'); return }
-  if (form.password !== form.password2) { ElMessage.warning('两次密码不一致'); return }
+  if (form.password !== form.confirm_password) { ElMessage.warning('两次密码不一致'); return }
   loading.value = true
   try {
-    await register(form.username, form.password)
+    await register(form.username, form.password, form.confirm_password)
     ElMessage.success('注册成功，请登录')
     router.push('/login')
   } catch (e) {

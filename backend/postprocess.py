@@ -1,11 +1,3 @@
-"""
-二次处理：整合生理信号、环境参数与睡眠阶段 → 统一 CSV
-- 生理信号: heart_rate(线性插值+平滑), spo2, movement_freq
-- 环境参数: temperature, humidity, noise_db
-- 睡眠阶段: 清醒、浅睡、深睡、快速眼动期(REM)
-- 缺失值：优先线性插值，回退合理随机数填充
-"""
-
 import os, glob, logging
 from typing import List
 
@@ -41,7 +33,6 @@ def load_fine_parquets(fine_dir: str) -> pd.DataFrame:
 
 
 def choose_heart_rate(row):
-    """心率来源优先级：sleepMinuteHR > heartRateAuto > heartRateSpot"""
     for col in ("sleepMinuteHR", "heartRateAuto", "heartRateSpot"):
         if col in row and pd.notna(row[col]):
             return float(row[col])
@@ -49,7 +40,6 @@ def choose_heart_rate(row):
 
 
 def map_stage_to_label(stage_val):
-    """睡眠阶段映射为中文标签"""
     if pd.isna(stage_val) or stage_val is None:
         return np.nan
     s = str(stage_val).upper()
@@ -61,9 +51,6 @@ def map_stage_to_label(stage_val):
 
 
 def fill_missing_smart(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    智能填充缺失值：优先线性插值，回退中位数，最后随机填充
-    """
     df = df.copy()
 
     # spo2: 线性插值 → 中位数 → 随机(92-100)
@@ -130,7 +117,6 @@ def fill_missing_smart(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_secondary_table(df: pd.DataFrame) -> pd.DataFrame:
-    """构建统一二次表，包含全部 7 个字段"""
     if "datetime" not in df.columns:
         raise ValueError("缺少 datetime 列")
     out = pd.DataFrame()

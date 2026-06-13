@@ -1,13 +1,3 @@
-# ============================================================
-# 睡眠质量分析系统 - 数据预处理（双表模式）
-#
-# 功能：
-#   1. 读取 DATA/ 下 7 张 CSV 原始数据
-#   2. 每日总量统计 → sleep_daily 单表
-#   3. 每日精细数据 → sleep_fine_YYYYMMDD 一天一表
-#   4. 尽一切可能保留实际数据，缺失字段用随机数填充
-#   5. 输出到 OUTPUT/ 目录，供 import_to_sql.py 手动入库
-# ============================================================
 
 import os
 import sys
@@ -46,9 +36,6 @@ CALORIES_MAX_PER_DAY = 10_000
 random.seed(42)
 np.random.seed(42)
 
-# ============================================================
-# 第一部分：数据读取
-# ============================================================
 
 def _read_sleep_csv_robust(fpath: str) -> pd.DataFrame:
     rows = []
@@ -86,9 +73,6 @@ def read_all_csvs(data_dir: str) -> Dict[str, pd.DataFrame]:
     return datasets
 
 
-# ============================================================
-# 第二部分：各数据源独立预处理
-# ============================================================
 
 def preprocess_sleep(df: pd.DataFrame) -> pd.DataFrame:
     """SLEEP 每日睡眠汇总"""
@@ -295,9 +279,6 @@ def preprocess_sleep_minute(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ============================================================
-# 第三部分：构建每日总量表
-# ============================================================
 
 def build_daily_table(processed: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     """
@@ -418,10 +399,6 @@ def fill_daily_missing_with_random(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ============================================================
-# 第四部分：构建每日精细表（一天一表）
-# ============================================================
-
 def collect_fine_sources(processed: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     """
     收集所有分钟级数据源（带 date_only 列），
@@ -440,7 +417,7 @@ def collect_fine_sources(processed: Dict[str, pd.DataFrame]) -> pd.DataFrame:
             sources.append(df)
 
     if not sources:
-        raise ValueError("没有分钟级数据源！")
+        raise ValueError("没有分钟级数据源")
 
     # 按 datetime 全外连接
     all_dts = []
@@ -471,7 +448,6 @@ def collect_fine_sources(processed: Dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 
 def fill_fine_missing_with_random(df: pd.DataFrame) -> pd.DataFrame:
-    """分钟级字段的随机填充"""
     df = df.copy()
 
     random_specs = {
@@ -513,7 +489,7 @@ def build_and_save_fine_tables(groups, fine_dir: str) -> List[str]:
     """
     按天拆分，对每一天：
       - 随机填充缺失
-      - 保存为 Parquet
+      - 保存为 Parquet/maybe not needed
       - 跳过空表
     返回生成的文件路径列表。
     """
@@ -548,9 +524,6 @@ def build_and_save_fine_tables(groups, fine_dir: str) -> List[str]:
     return saved
 
 
-# ============================================================
-# 第五部分：输出与统计
-# ============================================================
 
 def save_preview_csv(df: pd.DataFrame, output_path: str, n_rows: int = 500):
     preview = df.head(n_rows).copy()
@@ -575,9 +548,6 @@ def print_daily_statistics(df: pd.DataFrame):
     log.info("=" * 60)
 
 
-# ============================================================
-# 第六部分：主流程
-# ============================================================
 
 def main():
     log.info("=" * 60)
@@ -642,7 +612,7 @@ def main():
     log.info("   每日总量表：%s", DAILY_PARQUET)
     log.info("   每日总量预览：%s", DAILY_PREVIEW)
     log.info("   精细表目录：%s/ （%s 个文件）", FINE_DIR, len(fine_files))
-    log.info("   请运行 import_to_sql.py 手动导入 MySQL")
+    log.info("   请运行import_to_sql.py导入 MySQL")
     log.info("=" * 60)
 
 

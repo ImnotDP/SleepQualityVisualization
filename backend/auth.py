@@ -49,17 +49,18 @@ def get_current_user():
 
 @auth_bp.route("/register", methods=["POST"])
 def register():
-    """用户注册"""
+    """用户注册：用户名 + 密码 + 确认密码，密码不限制长度"""
     data = request.get_json() or {}
     username = (data.get("username") or "").strip()
     password = (data.get("password") or "").strip()
+    confirm_password = (data.get("confirm_password") or "").strip()
 
     if not username or not password:
         return jsonify({"error": "用户名和密码不能为空"}), 400
     if len(username) < 3:
         return jsonify({"error": "用户名至少3个字符"}), 400
-    if len(password) < 6:
-        return jsonify({"error": "密码至少6个字符"}), 400
+    if password != confirm_password:
+        return jsonify({"error": "两次密码不一致"}), 400
 
     existing = User.query.filter_by(username=username).first()
     if existing:

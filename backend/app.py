@@ -138,9 +138,9 @@ def _init_db():
                 admin.set_password(admin_password)
                 db.session.add(admin)
                 db.session.commit()
-                log.info("默认管理员已创建：%s / %s", admin_username, admin_password)
+                log.info("默认管理员账号已就绪")
             else:
-                log.info("管理员账号已存在：%s", admin_username)
+                log.info("管理员账号已存在")
     except Exception as e:
         log.error("数据库初始化失败：%s", e)
         raise
@@ -161,6 +161,67 @@ def api_status():
     }
 
 
+# ---------- 启动时自动导入 DATA 数据 ----------
+def _auto_import_data():
+    """启动后检测表内数据为空时，自动运行完整预处理管线导入 DATA/ 目录数据"""
+    from models import SleepRecord, User
+    with app.app_context():
+        count = SleepRecord.query.count()
+        if count > 0:
+            log.info("数据库已有 %s 条记录，跳过自动导入", count)
+            return
+
+    data_dir = os.path.join(ROOT_DIR, "DATA")
+    if not os.path.isdir(data_dir):
+        log.info("DATA 目录不存在，跳过自动导入")
+        return
+
+    log.info("检测到数据库为空，开始完整预处理管线...")
+    try:
+        from pipeline import run_full_pipeline, import_records_to_db
+        # 1. 运行完整预处理管线（线性插值 + 滑动平滑 + 特征工程）
+        records = run_full_pipeline(data_dir)
+        if not records:
+            log.warning("预处理管线未产生任何记录")
+            return
+
+        # 2. 入库到 admin 用户
+        with app.app_context():
+            admin_user = User.query.filter_by(role="admin").first()
+            if not admin_user:
+                log.error("无管理员用户，无法导入")
+                return
+            total = import_records_to_db(records, admin_user.id)
+            log.info("✅ DATA 数据导入完成：%s 条记录", total)
+
+        # 3. 执行分析引擎（训练模型 + 生成分析报告入库）
+        from analysis_engine import run_auto_analysis
+        from models import AnalysisReport
+        import json
+        with app.app_context():
+            result = run_auto_analysis()
+            log.info("自动分析完成，最佳模型：%s", result.get("regression", {}).get("best_model", "N/A"))
+
+            # 将分析结果写入 AnalysisReport 表
+            admin_user = User.query.filter_by(role="admin").first()
+            if admin_user and "report" in result:
+                report_data = result["report"]
+                report = AnalysisReport(
+                    user_id=admin_user.id,
+                    predicted_score=result.get("data_summary", {}).get("avg_score", 0),
+                    input_params=json.dumps(result.get("data_summary", {}), ensure_ascii=False),
+                    shap_values=json.dumps(result.get("regression", {}), ensure_ascii=False),
+                    suggestions="\n".join(report_data.get("suggestions", [])),
+                    feature_importance=json.dumps(
+                        result.get("regression", {}).get("rf", {}).get("feature_importance", []), ensure_ascii=False),
+                )
+                db.session.add(report)
+                db.session.commit()
+                log.info("✅ 分析报告已入库")
+    except Exception as e:
+        log.warning("自动导入 DATA 数据失败（可手动导入）：%s", e)
+
+
 # ---------- 启动 ----------
 if __name__ == "__main__":
     try:
@@ -168,6 +229,9 @@ if __name__ == "__main__":
     except Exception as e:
         log.error("数据库初始化失败，后端无法启动：%s", e)
         sys.exit(1)
+
+    # 自动导入 DATA 数据（仅当数据库为空时）
+    _auto_import_data()
 
     host = _cfg.get("FLASK_HOST", "0.0.0.0")
     port = int(_cfg.get("FLASK_PORT", "5000"))

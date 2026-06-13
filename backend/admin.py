@@ -189,3 +189,39 @@ def group_influence_ranking():
         "ranking": ranking,
         "total_records": len(records),
     })
+
+
+# ---------- 全局数据管理 ----------
+
+@admin_bp.route("/all_records", methods=["GET"])
+@admin_required
+def admin_all_records():
+    """管理员查看全站所有用户数据"""
+    page = int(request.args.get("page", 1))
+    page_size = int(request.args.get("page_size", 30))
+    user_id_filter = request.args.get("user_id")
+
+    query = SleepRecord.query.order_by(SleepRecord.uploaded_at.desc())
+    if user_id_filter:
+        query = query.filter_by(user_id=int(user_id_filter))
+    total = query.count()
+    records = query.offset((page - 1) * page_size).limit(page_size).all()
+
+    return jsonify({
+        "data": [r.to_dict() for r in records],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    })
+
+
+@admin_bp.route("/delete_record/<int:record_id>", methods=["DELETE"])
+@admin_required
+def admin_delete_record(record_id):
+    """管理员删除任意记录"""
+    record = SleepRecord.query.get(record_id)
+    if not record:
+        return jsonify({"error": "记录不存在"}), 404
+    db.session.delete(record)
+    db.session.commit()
+    return jsonify({"message": "删除成功"})

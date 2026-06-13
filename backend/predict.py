@@ -217,34 +217,3 @@ def get_report(report_id):
     if not report:
         return jsonify({"error": "报告不存在"}), 404
     return jsonify(report.to_dict())
-    return jsonify({"data": report.to_dict()})
-
-
-@predict_bp.route("/feature_analysis", methods=["GET"])
-@login_required
-def feature_analysis():
-    """
-    基于用户全部历史数据的特征重要性分析。
-    调用 _train_model 获取模型系数，返回各特征对睡眠质量的影响权重。
-    """
-    user = get_current_user()
-    model, X, info = _train_model(user.id)
-    if model is None:
-        return jsonify({"error": info}), 400
-
-    coefs = model.coef_
-    features = []
-    for i, f in enumerate(FEATURE_COLS):
-        features.append({
-            "feature": f,
-            "label": FEATURE_LABELS_ZH.get(f, f),
-            "importance": round(float(coefs[i]), 4),
-            "direction": "正向" if coefs[i] > 0 else "负向",
-        })
-
-    features.sort(key=lambda x: abs(x["importance"]), reverse=True)
-
-    return jsonify({
-        "features": features,
-        "model_info": info,
-    })

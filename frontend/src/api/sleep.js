@@ -6,6 +6,11 @@ const api = axios.create({
   withCredentials: true,
 })
 
+// ========== 系统状态 ==========
+export function getSystemStatus() {
+  return api.get('/status')
+}
+
 // ========== 认证 ==========
 export function register(username, password) {
   return api.post('/auth/register', { username, password })

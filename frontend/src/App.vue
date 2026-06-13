@@ -1,5 +1,9 @@
 <template>
   <div id="app-container">
+    <!-- 数据库警告横幅 -->
+    <div v-if="dbWarning" class="db-warning-bar">
+      ⚠️ {{ dbWarning }}
+    </div>
     <el-container v-if="isLoggedIn">
       <el-header class="app-header">
         <div class="header-left">
@@ -49,16 +53,27 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { logout, getCurrentUser } from './api/sleep'
+import { logout, getCurrentUser, getSystemStatus } from './api/sleep'
 
 const route = useRoute()
 const router = useRouter()
 const currentUser = ref(null)
+const dbWarning = ref('')
 const isLoggedIn = computed(() => !!currentUser.value)
 const isAdmin = computed(() => currentUser.value?.role === 'admin')
 const activeRoute = computed(() => route.path)
+
+async function checkDbStatus() {
+  try {
+    const res = await getSystemStatus()
+    if (!res.data.mysql_available) {
+      const err = res.data.mysql_error || '无法连接 MySQL 服务器'
+      dbWarning.value = `MySQL 不可用，已回退 SQLite（${err}）。如需使用 MySQL，请检查服务是否启动。`
+    }
+  } catch { /* 后端未启动，忽略 */ }
+}
 
 async function checkLogin() {
   try {
@@ -75,13 +90,14 @@ async function doLogout() {
   router.push('/login')
 }
 
-function onLoginSuccess() {
-  checkLogin()
+async function onLoginSuccess() {
+  await checkLogin()
   const u = currentUser.value
   router.push(u?.role === 'admin' ? '/admin/home' : '/user/home')
 }
 
 checkLogin()
+onMounted(checkDbStatus)
 </script>
 
 <style>
@@ -90,6 +106,10 @@ body {
   font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
   background: #0f1923;
   color: #e0e0e0;
+}
+.db-warning-bar {
+  background: #3a2a0a; color: #ffd04b; text-align: center;
+  padding: 8px 16px; font-size: 0.9rem; border-bottom: 1px solid #5a4a1a;
 }
 .app-header {
   display: flex; align-items: center; justify-content: space-between;

@@ -30,6 +30,12 @@ const BACKEND_HOST = '127.0.0.1'
 const BACKEND_PORT = parseInt(config['FLASK_PORT'], 10) || 5000
 const DIST_DIR = path.join(__dirname, 'dist')
 
+// 检查 dist 目录是否存在
+if (!fs.existsSync(DIST_DIR)) {
+  console.error('dist not found, run: npm run build')
+  process.exit(1)
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript',

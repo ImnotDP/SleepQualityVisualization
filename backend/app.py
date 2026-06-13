@@ -34,12 +34,39 @@ log = logging.getLogger(__name__)
 # ---------- Flask 应用工厂 ----------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = _cfg.get("SECRET_KEY", "default-secret-key")
-app.config["SQLALCHEMY_DATABASE_URI"] = (
+
+# 数据库 URI：优先 MySQL，不可用时自动回退 SQLite
+_mysql_uri = (
     f"mysql+pymysql://{_cfg.get('MYSQL_USER', 'root')}:{_cfg.get('MYSQL_PASSWORD', 'root')}"
     f"@{_cfg.get('MYSQL_HOST', '127.0.0.1')}:{_cfg.get('MYSQL_PORT', '3306')}"
     f"/{_cfg.get('MYSQL_DATABASE', 'sleep_quality_db')}"
     f"?charset={_cfg.get('MYSQL_CHARSET', 'utf8mb4')}"
 )
+_sqlite_uri = f"sqlite:///{os.path.join(BASE_DIR, 'sleep_quality.db')}"
+
+def _test_mysql():
+    try:
+        import pymysql
+        conn = pymysql.connect(
+            host=_cfg.get("MYSQL_HOST", "127.0.0.1"),
+            port=int(_cfg.get("MYSQL_PORT", "3306")),
+            user=_cfg.get("MYSQL_USER", "root"),
+            password=_cfg.get("MYSQL_PASSWORD", "root"),
+            charset=_cfg.get("MYSQL_CHARSET", "utf8mb4"),
+            connect_timeout=3,
+        )
+        conn.close()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+_use_mysql, _mysql_error = _test_mysql()
+if _use_mysql:
+    app.config["SQLALCHEMY_DATABASE_URI"] = _mysql_uri
+    log.info("使用 MySQL 数据库")
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = _sqlite_uri
+    log.warning("MySQL 不可用，回退 SQLite：%s", _mysql_error)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_size": 5,
@@ -77,43 +104,46 @@ app.register_blueprint(admin_bp)
 # ---------- 创建数据库表 & 默认管理员 ----------
 def _init_db():
     """创建数据库和表，并确保默认管理员账号存在"""
-    db_name = _cfg.get("MYSQL_DATABASE", "sleep_quality_db")
-    # 先创建数据库（如果不存在）
-    import pymysql
-    try:
-        conn = pymysql.connect(
-            host=_cfg.get("MYSQL_HOST", "127.0.0.1"),
-            port=int(_cfg.get("MYSQL_PORT", "3306")),
-            user=_cfg.get("MYSQL_USER", "root"),
-            password=_cfg.get("MYSQL_PASSWORD", "root"),
-            charset=_cfg.get("MYSQL_CHARSET", "utf8mb4"),
-        )
-        with conn.cursor() as cur:
-            cur.execute(
-                f"CREATE DATABASE IF NOT EXISTS `{db_name}` "
-                f"DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+    if _use_mysql:
+        db_name = _cfg.get("MYSQL_DATABASE", "sleep_quality_db")
+        import pymysql
+        try:
+            conn = pymysql.connect(
+                host=_cfg.get("MYSQL_HOST", "127.0.0.1"),
+                port=int(_cfg.get("MYSQL_PORT", "3306")),
+                user=_cfg.get("MYSQL_USER", "root"),
+                password=_cfg.get("MYSQL_PASSWORD", "root"),
+                charset=_cfg.get("MYSQL_CHARSET", "utf8mb4"),
             )
-        conn.close()
-        log.info("数据库 %s 已就绪", db_name)
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"CREATE DATABASE IF NOT EXISTS `{db_name}` "
+                    f"DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                )
+            conn.close()
+            log.info("数据库 %s 已就绪", db_name)
+        except Exception as e:
+            log.warning("无法自动创建数据库：%s", e)
+
+    try:
+        with app.app_context():
+            db.create_all()
+            log.info("数据库表已就绪")
+
+            admin_username = _cfg.get("ADMIN_DEFAULT_USERNAME", "admin")
+            admin_password = _cfg.get("ADMIN_DEFAULT_PASSWORD", "admin123")
+            existing = User.query.filter_by(username=admin_username).first()
+            if not existing:
+                admin = User(username=admin_username, role="admin")
+                admin.set_password(admin_password)
+                db.session.add(admin)
+                db.session.commit()
+                log.info("默认管理员已创建：%s / %s", admin_username, admin_password)
+            else:
+                log.info("管理员账号已存在：%s", admin_username)
     except Exception as e:
-        log.warning("无法自动创建数据库（可能 MySQL 未启动）：%s", e)
-
-    with app.app_context():
-        db.create_all()
-        log.info("数据库表已就绪")
-
-        # 创建默认管理员
-        admin_username = _cfg.get("ADMIN_DEFAULT_USERNAME", "admin")
-        admin_password = _cfg.get("ADMIN_DEFAULT_PASSWORD", "admin123")
-        existing = User.query.filter_by(username=admin_username).first()
-        if not existing:
-            admin = User(username=admin_username, role="admin")
-            admin.set_password(admin_password)
-            db.session.add(admin)
-            db.session.commit()
-            log.info("默认管理员账号已创建：%s / %s", admin_username, admin_password)
-        else:
-            log.info("管理员账号已存在：%s", admin_username)
+        log.error("数据库初始化失败：%s", e)
+        raise
 
 
 # ---------- 根路由 ----------
@@ -122,17 +152,24 @@ def index():
     return {"service": "睡眠质量分析系统 API", "version": "0.0.1"}
 
 
+@app.route("/api/status")
+def api_status():
+    return {
+        "mysql_available": _use_mysql,
+        "db_type": "mysql" if _use_mysql else "sqlite",
+        "mysql_error": _mysql_error,
+    }
+
+
 # ---------- 启动 ----------
 if __name__ == "__main__":
-    _init_db()
+    try:
+        _init_db()
+    except Exception as e:
+        log.error("数据库初始化失败，后端无法启动：%s", e)
+        sys.exit(1)
 
     host = _cfg.get("FLASK_HOST", "0.0.0.0")
     port = int(_cfg.get("FLASK_PORT", "5000"))
-    debug = _cfg.get("FLASK_DEBUG", "true").lower() == "true"
-
-    log.info("=" * 60)
-    log.info("   后端地址：http://%s:%s", host, port)
-    log.info("   前端地址：http://localhost:%s", _cfg.get("FRONTEND_PORT", "3000"))
-    log.info("=" * 60)
-
-    app.run(host=host, port=port, debug=debug)
+    log.info("后端启动：http://%s:%s", host, port)
+    app.run(host=host, port=port, debug=False)

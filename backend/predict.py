@@ -1,24 +1,22 @@
 # ============================================================
-# 睡眠质量分析系统 - 预测与分析模块 (predict)
-# 功能：线性回归睡眠质量预测、SHAP特征重要性分析、个性化建议
+# 睡眠质量分析系统 - 预测与分析 API
+# 功能：多模型预测（SVR/LR/RF）、特征重要性、睡眠评分、自动分析
 # ============================================================
 
-import os
-import json
-import logging
+import os, json, logging
 import numpy as np
 import pandas as pd
 from flask import Blueprint, request, jsonify
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import cross_val_score
 
 from models import db, SleepRecord, AnalysisReport
-from auth import login_required, get_current_user
+from auth import login_required, get_current_user, admin_required
+from analysis_engine import (compute_sleep_score, generate_sleep_report,
+                             train_regression_models,
+                             run_auto_analysis)
 
 log = logging.getLogger(__name__)
 predict_bp = Blueprint("predict", __name__, url_prefix="/api/predict")
 
-# ---------- 特征列 ----------
 FEATURE_COLS = [
     "totalSleepMinutes", "deepSleepTime", "shallowSleepTime", "REMTime",
     "wakeTime", "sleepEfficiency", "deepSleepRatio", "REMRatio",
@@ -26,178 +24,199 @@ FEATURE_COLS = [
 ]
 
 FEATURE_LABELS_ZH = {
-    "totalSleepMinutes": "总睡眠时长",
-    "deepSleepTime": "深睡时长",
-    "shallowSleepTime": "浅睡时长",
-    "REMTime": "REM时长",
-    "wakeTime": "清醒时长",
-    "sleepEfficiency": "睡眠效率",
-    "deepSleepRatio": "深睡比例",
-    "REMRatio": "REM比例",
-    "daySteps": "日步数",
-    "dayCalories": "日卡路里消耗",
-    "avgHeartRate": "平均心率",
+    "totalSleepMinutes": "总睡眠时长(分钟)", "deepSleepTime": "深睡时长(分钟)",
+    "shallowSleepTime": "浅睡时长(分钟)", "REMTime": "REM时长(分钟)",
+    "wakeTime": "清醒时长(分钟)", "sleepEfficiency": "睡眠效率",
+    "deepSleepRatio": "深睡比例", "REMRatio": "REM比例",
+    "daySteps": "日步数", "dayCalories": "日卡路里消耗",
+    "avgHeartRate": "平均心率(bpm)",
 }
 
-
-def _train_model(user_id: int):
-    """基于用户历史数据训练线性回归模型"""
-    records = SleepRecord.query.filter_by(user_id=user_id).all()
-    if len(records) < 5:
-        return None, None, "数据不足（至少需要5条记录）"
-
-    X, y = [], []
-    for r in records:
-        feats = [getattr(r, f, 0) or 0 for f in FEATURE_COLS]
-        target = r.sleepQualityScore or 0
-        X.append(feats)
-        y.append(target)
-
-    X, y = np.array(X), np.array(y)
-    model = LinearRegression()
-    model.fit(X, y)
-
-    # 交叉验证
-    try:
-        cv_scores = cross_val_score(model, X, y, cv=min(5, len(X)))
-        cv_mean = round(cv_scores.mean(), 4)
-    except Exception:
-        cv_mean = 0
-
-    return model, X, {"cv_mean_r2": cv_mean, "n_samples": len(X)}
-
-
-def _generate_suggestions(predicted_score: float, feature_importance: dict,
-                          input_params: dict) -> str:
-    """根据预测结果和特征重要性生成个性化建议"""
-    suggestions = []
-
-    if predicted_score < 60:
-        suggestions.append("⚠️ 您的睡眠质量预测偏低，建议关注以下方面进行改善。")
-    elif predicted_score < 80:
-        suggestions.append("📋 您的睡眠质量处于中等水平，仍有优化空间。")
-    else:
-        suggestions.append("✅ 您的睡眠质量预测良好，请继续保持当前作息习惯。")
-
-    # 按特征重要性排序
-    sorted_features = sorted(feature_importance.items(),
-                             key=lambda x: abs(x[1]), reverse=True)
-
-    for feat, importance in sorted_features[:3]:
-        label = FEATURE_LABELS_ZH.get(feat, feat)
-        val = input_params.get(feat, 0)
-        if importance > 0.5:
-            suggestions.append(f"📈 「{label}」是最大正向影响因素，当前值 {val}，建议继续保持。")
-        elif importance > 0.2:
-            suggestions.append(f"🔸 「{label}」对睡眠质量有中等正向影响。")
-        elif importance < -0.3:
-            suggestions.append(f"📉 「{label}」对睡眠质量有负面影响，建议适当调整。")
-
-    # 针对具体指标的建议
-    deep_ratio = input_params.get("deepSleepRatio", 0)
-    if deep_ratio < 0.1:
-        suggestions.append("💡 深睡比例偏低，建议睡前避免剧烈运动、保持卧室安静黑暗。")
-    efficiency = input_params.get("sleepEfficiency", 0)
-    if efficiency < 0.8:
-        suggestions.append("💡 睡眠效率偏低，建议固定就寝时间、减少床上使用电子设备。")
-    steps = input_params.get("daySteps", 0)
-    if steps and steps < 3000:
-        suggestions.append("🚶 日步数偏低，适当增加日间活动有助于改善夜间睡眠。")
-
-    return "\n".join(suggestions)
-
-
-# ---------- 路由 ----------
 
 @predict_bp.route("/score", methods=["POST"])
 @login_required
 def predict_score():
-    """
-    睡眠质量预测：
-    用户输入生理参数（或使用历史均值），模型预测睡眠质量得分(0-100)。
-    """
+    """综合睡眠质量预测：SVR/LR/RF 对比，选最佳模型"""
     user = get_current_user()
     data = request.get_json() or {}
 
-    # 获取用户输入参数，缺失则使用历史均值
     records = SleepRecord.query.filter_by(user_id=user.id).all()
+    if len(records) < 5:
+        return jsonify({"error": "数据不足，至少需要5条历史记录"}), 400
+
+    X, y = [], []
+    for r in records:
+        feats = [getattr(r, f, 0) or 0 for f in FEATURE_COLS]
+        X.append(feats)
+        y.append(getattr(r, "sleepQualityScore", 0) or 0)
+    X, y = np.array(X), np.array(y)
+
+    reg_results = train_regression_models(X, y)
+    if "error" in reg_results:
+        return jsonify({"error": reg_results["error"]}), 400
+
     input_params = {}
     for f in FEATURE_COLS:
         if f in data and data[f] is not None:
             input_params[f] = float(data[f])
         else:
             vals = [getattr(r, f, 0) or 0 for r in records if getattr(r, f, None)]
-            input_params[f] = round(np.mean(vals), 2) if vals else 0
+            input_params[f] = round(float(np.mean(vals)), 2) if vals else 0
 
-    model, X_train, info = _train_model(user.id)
-    if model is None:
-        return jsonify({"error": info}), 400
-
-    # 预测
+    best_name = reg_results.get("best_model", "rf")
+    best_info = reg_results.get(best_name, {})
     X_input = np.array([[input_params[f] for f in FEATURE_COLS]])
-    predicted = round(float(model.predict(X_input)[0]), 2)
-    predicted = max(0, min(100, predicted))
 
-    # 特征重要性（基于模型系数）
-    coefs = model.coef_
-    feature_importance = {}
-    for i, f in enumerate(FEATURE_COLS):
-        feature_importance[f] = round(float(coefs[i]), 4)
+    if best_name in ("linear", "svr") and best_info.get("scaler"):
+        X_input_s = best_info["scaler"].transform(X_input)
+        predicted = round(float(best_info["model"].predict(X_input_s)[0]), 2)
+    else:
+        predicted = round(float(best_info.get("model",
+                             type("", (), {"predict": lambda x: [np.mean(y)]})()
+                             ).predict(X_input)[0]), 2)
+    predicted = max(1, min(10, predicted))
 
-    # 生成建议
-    suggestions = _generate_suggestions(predicted, feature_importance, input_params)
+    fi = {}
+    if best_name == "rf" and "feature_importance" in best_info:
+        for i, f in enumerate(FEATURE_COLS):
+            fi[f] = round(float(best_info["feature_importance"][i]), 4)
+    elif best_name == "linear" and "coef" in best_info:
+        for i, f in enumerate(FEATURE_COLS):
+            fi[f] = round(float(best_info["coef"][i]), 4)
 
-    # 保存报告
+    report_data = generate_sleep_report(input_params, reg_results)
+    suggestions = "\n".join(report_data.get("suggestions", []))
+
+    model_comparison = {}
+    for name in ["svr", "linear", "rf"]:
+        if name in reg_results:
+            model_comparison[name] = {
+                "r2": reg_results[name].get("r2"),
+                "mae": reg_results[name].get("mae"),
+                "rmse": reg_results[name].get("rmse"),
+            }
+
     report = AnalysisReport(
-        user_id=user.id,
-        predicted_score=predicted,
+        user_id=user.id, predicted_score=predicted,
         input_params=json.dumps(input_params, ensure_ascii=False),
-        shap_values=json.dumps(feature_importance, ensure_ascii=False),
+        shap_values=json.dumps(fi, ensure_ascii=False),
         suggestions=suggestions,
-        feature_importance=json.dumps(feature_importance, ensure_ascii=False),
+        feature_importance=json.dumps(fi, ensure_ascii=False),
     )
     db.session.add(report)
     db.session.commit()
 
     return jsonify({
         "predicted_score": predicted,
+        "rating": report_data.get("rating", ""),
+        "score_breakdown": report_data.get("breakdown", {}),
         "input_params": input_params,
-        "feature_importance": feature_importance,
+        "feature_importance": fi,
         "suggestions": suggestions,
-        "model_info": info,
+        "model_comparison": model_comparison,
+        "best_model": best_name,
         "report_id": report.id,
+    })
+
+
+@predict_bp.route("/feature_analysis", methods=["GET"])
+@login_required
+def feature_analysis():
+    """特征重要性分析与模型对比"""
+    user = get_current_user()
+    records = SleepRecord.query.filter_by(user_id=user.id).all()
+    if len(records) < 5:
+        return jsonify({"error": "数据不足"}), 400
+
+    X, y = [], []
+    for r in records:
+        X.append([getattr(r, f, 0) or 0 for f in FEATURE_COLS])
+        y.append(getattr(r, "sleepQualityScore", 0) or 0)
+    X, y = np.array(X), np.array(y)
+
+    reg_results = train_regression_models(X, y)
+    if "error" in reg_results:
+        return jsonify({"error": reg_results["error"]}), 400
+
+    fi = {}
+    best_name = reg_results.get("best_model", "rf")
+    best_info = reg_results.get(best_name, {})
+    if "feature_importance" in best_info:
+        for i, f in enumerate(FEATURE_COLS):
+            fi[FEATURE_LABELS_ZH.get(f, f)] = round(
+                float(best_info["feature_importance"][i]), 4)
+
+    return jsonify({
+        "feature_importance": fi,
+        "model_comparison": {
+            name: {"r2": v.get("r2"), "mae": v.get("mae"), "rmse": v.get("rmse")}
+            for name, v in reg_results.items()
+            if isinstance(v, dict) and "r2" in v
+        },
+        "best_model": best_name,
+        "n_samples": int(len(X)),
+    })
+
+
+@predict_bp.route("/auto_analysis", methods=["POST"])
+@login_required
+def auto_analysis():
+    """一键自动化分析（管理员）"""
+    user = get_current_user()
+    if user.role != "admin":
+        return jsonify({"error": "需要管理员权限"}), 403
+    result = run_auto_analysis()
+    return jsonify(result)
+
+
+@predict_bp.route("/quick_score", methods=["POST"])
+@login_required
+def quick_score():
+    """快速评分：基于输入特征计算1-10分"""
+    data = request.get_json() or {}
+    features = {
+        "deepSleepRatio": float(data.get("deepSleepRatio", 0.15)),
+        "REMRatio": float(data.get("REMRatio", 0.2)),
+        "sleepEfficiency": float(data.get("sleepEfficiency", 0.8)),
+        "wakeRatio": float(data.get("wakeRatio", 0.05)),
+        "avgHeartRate": float(data.get("avgHeartRate", 70)),
+        "daySteps": float(data.get("daySteps", 5000)),
+    }
+    score = compute_sleep_score(
+        features["deepSleepRatio"], features["REMRatio"],
+        features["sleepEfficiency"], features["wakeRatio"])
+    report = generate_sleep_report(features, {})
+    return jsonify({
+        "score": score, "rating": report["rating"],
+        "breakdown": report["breakdown"],
+        "suggestions": "\n".join(report["suggestions"]),
     })
 
 
 @predict_bp.route("/reports", methods=["GET"])
 @login_required
 def list_reports():
-    """查看历史预测报告列表"""
     user = get_current_user()
     page = int(request.args.get("page", 1))
     page_size = int(request.args.get("page_size", 20))
-
     query = AnalysisReport.query.filter_by(user_id=user.id).order_by(
         AnalysisReport.created_at.desc())
     total = query.count()
     reports = query.offset((page - 1) * page_size).limit(page_size).all()
-
     return jsonify({
-        "data": [r.to_dict() for r in reports],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
+        "data": [r.to_dict() for r in reports], "total": total,
+        "page": page, "page_size": page_size,
     })
 
 
 @predict_bp.route("/reports/<int:report_id>", methods=["GET"])
 @login_required
 def get_report(report_id):
-    """查看单条预测报告"""
     user = get_current_user()
     report = AnalysisReport.query.filter_by(id=report_id, user_id=user.id).first()
     if not report:
         return jsonify({"error": "报告不存在"}), 404
+    return jsonify(report.to_dict())
     return jsonify({"data": report.to_dict()})
 
 

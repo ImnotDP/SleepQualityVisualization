@@ -1,6 +1,19 @@
 # Python睡眠质量分析预测 睡眠质量可视化
 
 
+
+## 系统需求
+
+| 组件 | 最低版本 | 说明 |
+|------|----------|------|
+| Python | ≥ 3.10 | Conda 环境内置 3.12.13 |
+| Node.js | ≥ 18 | 前端构建与运行 |
+| npm | ≥ 9 | Node.js 自带 |
+| Conda | Miniconda / Anaconda / Miniforge | 仅 Conda 安装方式需要 |
+| MySQL | ≥ 5.7 (推荐 8.0) | 数据库存储 |
+
+> **注意**：如果使用 Python venv 方式安装，无需 Conda；Node.js 仅前端构建需要。
+
 ## Env build
 
 ### Conda
@@ -9,9 +22,26 @@ conda env create -f environment.yml
 conda activate sleepQualityVisualization
 ```
 
+### Or use Python venv
+```bash
+# Linux / Mac
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Windows
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
 ### update after git pull
 ```bash
+# Conda
 conda env update -f environment.yml --prune
+
+# Python venv
+pip install -r requirements.txt --upgrade
 ```
 
 

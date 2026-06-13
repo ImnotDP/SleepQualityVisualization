@@ -117,10 +117,10 @@ def _quick_preprocess_csv(filepath: str, user_id: int) -> list:
         rec["sleepEfficiency"] = round(total / (total + wake), 4) if (total + wake) > 0 else 0
         rec["wakeRatio"] = round(wake / (total + wake), 4) if (total + wake) > 0 else 0
         rec["sleepQualityScore"] = rec.get("sleepQualityScore") or round(
-            rec["deepSleepRatio"] * 40 + rec["REMRatio"] * 30 +
-            rec["sleepEfficiency"] * 20 - rec["wakeRatio"] * 10, 2
+            (rec["deepSleepRatio"] * 3.5 + rec["REMRatio"] * 2.5 +
+             rec["sleepEfficiency"] * 3.0 - rec["wakeRatio"] * 1.5) * 10 / 7.5, 2
         )
-        rec["sleepQualityScore"] = max(0, min(100, rec["sleepQualityScore"]))
+        rec["sleepQualityScore"] = max(1, min(10, rec["sleepQualityScore"]))
         rec["naps"] = "[]"
 
         records.append(rec)

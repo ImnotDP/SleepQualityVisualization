@@ -119,9 +119,9 @@ def preprocess_sleep(df: pd.DataFrame) -> pd.DataFrame:
         (df["totalSleepMinutes"] + df["wakeTime"]) > 0,
         df["wakeTime"] / (df["totalSleepMinutes"] + df["wakeTime"]), 0)
     df["sleepQualityScore"] = (
-        df["deepSleepRatio"] * 40 + df["REMRatio"] * 30 +
-        df["sleepEfficiency"] * 20 - df["wakeRatio"] * 10
-    ).clip(0, 100).round(2)
+        (df["deepSleepRatio"] * 3.5 + df["REMRatio"] * 2.5 +
+         df["sleepEfficiency"] * 3.0 - df["wakeRatio"] * 1.5) * 10 / 7.5
+    ).clip(1, 10).round(2)
 
     keep = ["date", "deepSleepTime", "shallowSleepTime", "wakeTime", "REMTime",
             "naps", "totalSleepMinutes", "deepSleepRatio", "REMRatio",
@@ -211,42 +211,49 @@ def preprocess_activity_stage(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def preprocess_heartrate(df: pd.DataFrame) -> pd.DataFrame:
-    """HEARTRATE → datetime + heartRate（向下取整到分钟）"""
+    """HEARTRATE → 线性插值 + 滑动窗口平滑 → 分钟级心率"""
     df = df.copy()
     df["time"] = pd.to_datetime(df["time"], errors="coerce")
     if hasattr(df["time"].dtype, "tz") and df["time"].dtype.tz is not None:
         df["time"] = df["time"].dt.tz_convert(None)
     df["heartRate"] = pd.to_numeric(df["heartRate"], errors="coerce")
-    df["heartRate"] = df["heartRate"].interpolate(method="linear")
+    # 线性插值填充缺失
+    df["heartRate"] = df["heartRate"].interpolate(method="linear", limit_direction="both")
     df["heartRate"] = df["heartRate"].fillna(
         df["heartRate"].median() if len(df) > 0 else 70)
+    # 滑动窗口平滑（窗口大小=5）
+    df["heartRate"] = df["heartRate"].rolling(window=5, center=True, min_periods=1).mean()
     df = df[(df["heartRate"] >= HR_MIN) & (df["heartRate"] <= HR_MAX)]
     df["datetime"] = df["time"].dt.floor("min")
     df = df.groupby("datetime", as_index=False)["heartRate"].mean()
     df = df.rename(columns={"heartRate": "heartRateSpot"})
     df["date_only"] = df["datetime"].dt.date
-    log.info("HEARTRATE 预处理完成：%s 行", len(df))
+    log.info("HEARTRATE 预处理完成（含滑动窗口平滑）：%s 行", len(df))
     return df
 
 
 def preprocess_heartrate_auto(df: pd.DataFrame) -> pd.DataFrame:
-    """HEARTRATE_AUTO → datetime + heartRate"""
+    """HEARTRATE_AUTO → 线性插值 + 滑动窗口平滑 → 分钟级心率"""
     df = df.copy()
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df["heartRate"] = pd.to_numeric(df["heartRate"], errors="coerce")
     df["datetime"] = pd.to_datetime(
         df["date"].dt.strftime("%Y-%m-%d") + " " + df["time"].astype(str),
         errors="coerce")
+    # 线性插值填充缺失
+    df["heartRate"] = df["heartRate"].interpolate(method="linear", limit_direction="both")
     df["heartRate"] = df.groupby(df["datetime"].dt.date)["heartRate"].transform(
         lambda x: x.fillna(x.median() if not pd.isna(x.median()) else 70))
     df["heartRate"] = df["heartRate"].fillna(
         df["heartRate"].median() if len(df) > 0 else 70)
+    # 滑动窗口平滑（窗口大小=5）
+    df["heartRate"] = df["heartRate"].rolling(window=5, center=True, min_periods=1).mean()
     df = df[(df["heartRate"] >= HR_MIN) & (df["heartRate"] <= HR_MAX)]
     df = df.dropna(subset=["datetime"])
     df["date_only"] = df["datetime"].dt.date
     df = df[["datetime", "date_only", "heartRate"]].rename(
         columns={"heartRate": "heartRateAuto"})
-    log.info("HEARTRATE_AUTO 预处理完成：%s 行", len(df))
+    log.info("HEARTRATE_AUTO 预处理完成（含滑动窗口平滑）：%s 行", len(df))
     return df
 
 
@@ -374,7 +381,7 @@ def fill_daily_missing_with_random(df: pd.DataFrame) -> pd.DataFrame:
         "totalSleepMinutes": (200, 500, 1),
         "deepSleepRatio": (0.05, 0.35, 4), "REMRatio": (0.10, 0.35, 4),
         "sleepEfficiency": (0.70, 0.98, 4), "wakeRatio": (0.00, 0.20, 4),
-        "sleepQualityScore": (40, 95, 2),
+        "sleepQualityScore": (3, 9.5, 2),
         "daySteps": (1000, 20000, 0), "dayDistance": (500, 20000, 0),
         "dayRunDistance": (0, 5000, 0), "dayCalories": (100, 500, 0),
         "avgHeartRate": (50, 100, 1), "minHeartRate": (40, 70, 1),

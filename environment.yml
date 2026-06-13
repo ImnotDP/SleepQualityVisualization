@@ -4,7 +4,7 @@ channels:
   - nodefaults
 dependencies:
   - python=3.12.13
-  - pip=26.1.1
+  - pip
   - numpy>=2.4.6
   - pandas>=3.0.3
   - scikit-learn>=1.8.0
@@ -16,3 +16,5 @@ dependencies:
   - werkzeug>=3.1.8
   - pymysql>=1.2.0
   - cryptography>=45.0.7
+  - matplotlib-base>=3.10
+  - seaborn-base>=0.13

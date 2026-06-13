@@ -104,7 +104,6 @@ SleepQualityVisualization/
 │   ├── predict.py               # 预测分析：SVR/LR/RF多模型对比/特征重要性/个性化建议
 │   ├── admin.py                 # 管理员：全局统计/用户管理/群体数据聚合
 │   ├── pipeline.py              # 完整预处理管线（线性插值+滑动平滑+IQR异常值+环境参数+阶段标注+特征工程）
-│   ├── evaluate_model.py        # 模型评估脚本（R²/MSE/SHAP可解释性）
 │   ├── preprocess.py            # 独立预处理引擎
 │   ├── postprocess.py           # 独立二次处理引擎
 │   └── import_to_sql.py         # 独立SQL导入脚本

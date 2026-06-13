@@ -234,14 +234,62 @@ SleepQualityVisualization/
 
 三张核心表，实现多用户数据隔离：
 
-| 表名 | 说明 | 关键字段 |
-|------|------|---------|
-| `users` | 用户信息表 | id, username, password_hash, role(user/admin), created_at |
-| `sleep_records` | 睡眠数据表 | id, user_id(FK), record_date, deepSleepTime, shallowSleepTime, REMTime, wakeTime, sleepQualityScore, daySteps, avgHeartRate, ... |
-| `analysis_reports` | 分析报告表 | id, user_id(FK), predicted_score, input_params(JSON), shap_values(JSON), suggestions, feature_importance(JSON), created_at |
+### 1. `users` — 用户信息表
 
-- 所有睡眠数据通过 `user_id` 外键绑定到用户，实现数据隔离
-- 报告表记录每次预测的输入参数、输出结果和建议，支持历史回溯
+| # | 列名 | 类型 | 约束 | 说明 |
+|---|------|------|------|------|
+| 1 | `id` | `INTEGER` | PK, AUTOINCREMENT | 用户唯一标识 |
+| 2 | `username` | `VARCHAR(80)` | UNIQUE, NOT NULL, INDEX | 用户名 |
+| 3 | `password_hash` | `VARCHAR(256)` | NOT NULL | 密码哈希 (werkzeug) |
+| 4 | `role` | `VARCHAR(20)` | NOT NULL, DEFAULT `'user'` | 角色：`user` / `admin` |
+| 5 | `created_at` | `DATETIME` | DEFAULT `utcnow` | 注册时间 |
+
+### 2. `sleep_records` — 睡眠数据表
+
+| # | 列名 | 类型 | 约束 | 说明 |
+|---|------|------|------|------|
+| 1 | `id` | `INTEGER` | PK, AUTOINCREMENT | 记录唯一标识 |
+| 2 | `user_id` | `INTEGER` | FK → `users.id`, NOT NULL, INDEX | 所属用户 |
+| 3 | `record_date` | `VARCHAR(20)` | NOT NULL | 记录日期 |
+| 4 | `deepSleepTime` | `FLOAT` | DEFAULT `0` | 深睡时长 (min) |
+| 5 | `shallowSleepTime` | `FLOAT` | DEFAULT `0` | 浅睡时长 (min) |
+| 6 | `wakeTime` | `FLOAT` | DEFAULT `0` | 清醒时长 (min) |
+| 7 | `REMTime` | `FLOAT` | DEFAULT `0` | REM 时长 (min) |
+| 8 | `totalSleepMinutes` | `FLOAT` | DEFAULT `0` | 总睡眠时长 (min) |
+| 9 | `deepSleepRatio` | `FLOAT` | DEFAULT `0` | 深睡比例 |
+| 10 | `REMRatio` | `FLOAT` | DEFAULT `0` | REM 比例 |
+| 11 | `sleepEfficiency` | `FLOAT` | DEFAULT `0` | 睡眠效率 |
+| 12 | `wakeRatio` | `FLOAT` | DEFAULT `0` | 清醒比例 |
+| 13 | `sleepQualityScore` | `FLOAT` | DEFAULT `0` | 睡眠质量分 (0-100) |
+| 14 | `daySteps` | `FLOAT` | DEFAULT `0` | 当日步数 |
+| 15 | `dayDistance` | `FLOAT` | DEFAULT `0` | 当日距离 (m) |
+| 16 | `dayRunDistance` | `FLOAT` | DEFAULT `0` | 跑步距离 (m) |
+| 17 | `dayCalories` | `FLOAT` | DEFAULT `0` | 当日卡路里 (kcal) |
+| 18 | `avgHeartRate` | `FLOAT` | DEFAULT `0` | 日均心率 (bpm) |
+| 19 | `minHeartRate` | `FLOAT` | DEFAULT `0` | 最小心率 (bpm) |
+| 20 | `maxHeartRate` | `FLOAT` | DEFAULT `0` | 最大心率 (bpm) |
+| 21 | `stdHeartRate` | `FLOAT` | DEFAULT `0` | 心率标准差 |
+| 22 | `nightAvgHR` | `FLOAT` | DEFAULT `0` | 夜间平均心率 (bpm) |
+| 23 | `nightAvgRR` | `FLOAT` | DEFAULT `0` | 夜间平均呼吸率 |
+| 24 | `naps` | `TEXT` | DEFAULT `'[]'` | 小睡记录 (JSON 数组) |
+| 25 | `uploaded_at` | `DATETIME` | DEFAULT `utcnow` | 上传时间 |
+
+### 3. `analysis_reports` — 分析报告表
+
+| # | 列名 | 类型 | 约束 | 说明 |
+|---|------|------|------|------|
+| 1 | `id` | `INTEGER` | PK, AUTOINCREMENT | 报告唯一标识 |
+| 2 | `user_id` | `INTEGER` | FK → `users.id`, NOT NULL, INDEX | 所属用户 |
+| 3 | `predicted_score` | `FLOAT` | DEFAULT `0` | 预测睡眠质量分 (0-100) |
+| 4 | `input_params` | `TEXT` | DEFAULT `'{}'` | 用户输入参数 (JSON) |
+| 5 | `shap_values` | `TEXT` | DEFAULT `'{}'` | SHAP 特征贡献值 (JSON) |
+| 6 | `suggestions` | `TEXT` | DEFAULT `''` | 个性化改善建议 |
+| 7 | `feature_importance` | `TEXT` | DEFAULT `'{}'` | 特征重要性排序 (JSON) |
+| 8 | `created_at` | `DATETIME` | DEFAULT `utcnow` | 报告生成时间 |
+
+> **关系说明**：所有睡眠数据通过 `user_id` 外键绑定到用户，级联删除；报告表记录每次预测的输入参数、输出结果和建议，支持历史回溯。
+
+
 
 
 

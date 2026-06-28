@@ -16,16 +16,23 @@ def _get_user_records(user_id: int):
 @vis_bp.route("/scatter", methods=["GET"])
 @login_required
 def scatter_data():
-    """心率/步数 vs 睡眠质量 散点图"""
+    """心率/步数/环境参数 vs 睡眠质量 散点图"""
     user = get_current_user()
     records = _get_user_records(user.id)
-    hr_vs, steps_vs = [], []
+    hr_vs, steps_vs, temp_vs, noise_vs = [], [], [], []
     for r in records:
         if r.avgHeartRate and r.sleepQualityScore:
             hr_vs.append([round(r.avgHeartRate, 1), round(r.sleepQualityScore, 1)])
         if r.daySteps and r.sleepQualityScore:
             steps_vs.append([round(r.daySteps), round(r.sleepQualityScore, 1)])
-    return jsonify({"hr_vs_quality": hr_vs, "steps_vs_quality": steps_vs})
+        if r.temperature and r.sleepQualityScore:
+            temp_vs.append([round(r.temperature, 1), round(r.sleepQualityScore, 1)])
+        if r.noise_db and r.sleepQualityScore:
+            noise_vs.append([round(r.noise_db, 1), round(r.sleepQualityScore, 1)])
+    return jsonify({
+        "hr_vs_quality": hr_vs, "steps_vs_quality": steps_vs,
+        "temperature_vs_quality": temp_vs, "noise_vs_quality": noise_vs,
+    })
 
 
 @vis_bp.route("/histogram", methods=["GET"])
@@ -97,6 +104,7 @@ def correlation_data():
         "shallowSleepTime", "REMTime", "wakeTime", "sleepEfficiency",
         "deepSleepRatio", "REMRatio", "daySteps", "dayCalories",
         "avgHeartRate", "nightAvgHR",
+        "temperature", "humidity", "noise_db", "spo2", "movement_freq",
     ]
     field_labels = {
         "sleepQualityScore": "睡眠质量分", "totalSleepMinutes": "总睡眠时长",
@@ -106,6 +114,9 @@ def correlation_data():
         "REMRatio": "REM比例", "daySteps": "步数",
         "dayCalories": "卡路里", "avgHeartRate": "平均心率",
         "nightAvgHR": "夜间心率",
+        "temperature": "温度(°C)", "humidity": "湿度(%)",
+        "noise_db": "噪声(dB)", "spo2": "血氧(%)",
+        "movement_freq": "体动频率",
     }
 
     data_points = {f: [] for f in fields}
@@ -141,6 +152,7 @@ def trend_data():
     records = _get_user_records(user.id)
 
     dates, scores, sleep_hrs, efficiency, deep_hrs, rem_hrs = [], [], [], [], [], []
+    temps, humids, noises, spo2s, movements = [], [], [], [], []
     for r in records:
         dates.append(r.record_date or "")
         scores.append(round(r.sleepQualityScore or 0, 1))
@@ -148,11 +160,18 @@ def trend_data():
         efficiency.append(round((r.sleepEfficiency or 0)*100, 1))
         deep_hrs.append(round((r.deepSleepTime or 0)/60, 2))
         rem_hrs.append(round((r.REMTime or 0)/60, 2))
+        temps.append(round(r.temperature or 22, 1))
+        humids.append(round(r.humidity or 55, 1))
+        noises.append(round(r.noise_db or 35, 1))
+        spo2s.append(round(r.spo2 or 97, 1))
+        movements.append(round(r.movement_freq or 5, 1))
 
     return jsonify({
         "dates": dates, "quality_scores": scores,
         "total_sleep_hours": sleep_hrs, "efficiency_pct": efficiency,
         "deep_sleep_hours": deep_hrs, "rem_sleep_hours": rem_hrs,
+        "temperature": temps, "humidity": humids,
+        "noise_db": noises, "spo2": spo2s, "movement_freq": movements,
     })
 
 
@@ -289,7 +308,9 @@ def public_correlation():
     fields = [
         "sleepQualityScore", "totalSleepMinutes", "deepSleepTime",
         "shallowSleepTime", "REMTime", "wakeTime", "sleepEfficiency",
-        "deepSleepRatio", "REMRatio", "daySteps", "dayCalories", "avgHeartRate",
+        "deepSleepRatio", "REMRatio", "daySteps", "dayCalories",
+        "avgHeartRate", "nightAvgHR",
+        "temperature", "humidity", "noise_db", "spo2", "movement_freq",
     ]
     field_labels = {
         "sleepQualityScore": "睡眠质量分", "totalSleepMinutes": "总睡眠时长",
@@ -298,6 +319,10 @@ def public_correlation():
         "sleepEfficiency": "睡眠效率", "deepSleepRatio": "深睡比例",
         "REMRatio": "REM比例", "daySteps": "步数",
         "dayCalories": "卡路里", "avgHeartRate": "平均心率",
+        "nightAvgHR": "夜间心率",
+        "temperature": "温度(°C)", "humidity": "湿度(%)",
+        "noise_db": "噪声(dB)", "spo2": "血氧(%)",
+        "movement_freq": "体动频率",
     }
     data_points = {f: [getattr(r, f, 0) or 0 for r in records] for f in fields}
     matrix = {}
@@ -342,4 +367,158 @@ def public_sleep_structure():
         "shallow": [r.shallowSleepTime or 0 for r in records],
         "rem": [r.REMTime or 0 for r in records],
         "wake": [r.wakeTime or 0 for r in records],
+    })
+
+
+# ========== 环境参数可视化 ==========
+
+@vis_bp.route("/environment", methods=["GET"])
+@login_required
+def environment_data():
+    """环境参数综合数据：温度/湿度/噪声/血氧/体动日趋势 + 统计摘要"""
+    user = get_current_user()
+    records = _get_user_records(user.id)
+    if not records:
+        return jsonify({"error": "无数据"}), 404
+
+    dates = [r.record_date or "" for r in records]
+    temps = [round(r.temperature or 22, 1) for r in records]
+    humids = [round(r.humidity or 55, 1) for r in records]
+    noises = [round(r.noise_db or 35, 1) for r in records]
+    spo2s = [round(r.spo2 or 97, 1) for r in records]
+    movements = [round(r.movement_freq or 5, 1) for r in records]
+    quality = [round(r.sleepQualityScore or 0, 1) for r in records]
+
+    def stats(arr):
+        if not arr: return {}
+        return {
+            "avg": round(sum(arr)/len(arr), 1),
+            "min": min(arr), "max": max(arr),
+        }
+
+    return jsonify({
+        "dates": dates,
+        "temperature": temps, "temperature_stats": stats(temps),
+        "humidity": humids, "humidity_stats": stats(humids),
+        "noise_db": noises, "noise_stats": stats(noises),
+        "spo2": spo2s, "spo2_stats": stats(spo2s),
+        "movement_freq": movements, "movement_stats": stats(movements),
+        "quality_scores": quality,
+    })
+
+
+@vis_bp.route("/environment_vs_quality", methods=["GET"])
+@login_required
+def environment_vs_quality():
+    """环境参数 vs 睡眠质量散点数据（用于分析环境影响）"""
+    user = get_current_user()
+    records = _get_user_records(user.id)
+
+    pairs = {
+        "temperature": [], "humidity": [], "noise_db": [],
+        "spo2": [], "movement_freq": [],
+    }
+    for r in records:
+        sq = r.sleepQualityScore
+        if not sq: continue
+        for key, attr in [("temperature", "temperature"), ("humidity", "humidity"),
+                           ("noise_db", "noise_db"), ("spo2", "spo2"),
+                           ("movement_freq", "movement_freq")]:
+            val = getattr(r, attr, None)
+            if val is not None:
+                pairs[key].append([round(val, 1), round(sq, 1)])
+
+    # 计算各环境参数与睡眠质量的相关系数
+    import math
+    corrs = {}
+    for key, data in pairs.items():
+        if len(data) < 3:
+            corrs[key] = 0; continue
+        xs = [d[0] for d in data]; ys = [d[1] for d in data]
+        n = len(xs)
+        mx, my = sum(xs)/n, sum(ys)/n
+        sx = math.sqrt(sum((x-mx)**2 for x in xs))
+        sy = math.sqrt(sum((y-my)**2 for y in ys))
+        if sx == 0 or sy == 0: corrs[key] = 0; continue
+        corrs[key] = round(sum((xs[i]-mx)*(ys[i]-my) for i in range(n))/(sx*sy), 4)
+
+    return jsonify({
+        "scatter_data": pairs,
+        "correlation_with_quality": corrs,
+        "labels": {
+            "temperature": "温度(°C)", "humidity": "湿度(%)",
+            "noise_db": "噪声(dB)", "spo2": "血氧(%)",
+            "movement_freq": "体动(次/分钟)",
+        },
+    })
+
+
+# ========== 公开环境参数可视化 ==========
+
+@vis_bp.route("/public/environment", methods=["GET"])
+def public_environment_data():
+    """公开版环境参数综合数据"""
+    records = _get_public_records()
+    if not records:
+        return jsonify({"error": "无数据"}), 404
+
+    dates = [r.record_date or "" for r in records]
+    temps = [round(r.temperature or 22, 1) for r in records]
+    humids = [round(r.humidity or 55, 1) for r in records]
+    noises = [round(r.noise_db or 35, 1) for r in records]
+    spo2s = [round(r.spo2 or 97, 1) for r in records]
+    movements = [round(r.movement_freq or 5, 1) for r in records]
+    quality = [round(r.sleepQualityScore or 0, 1) for r in records]
+
+    def stats(arr):
+        if not arr: return {}
+        return {"avg": round(sum(arr)/len(arr), 1), "min": min(arr), "max": max(arr)}
+
+    return jsonify({
+        "dates": dates,
+        "temperature": temps, "temperature_stats": stats(temps),
+        "humidity": humids, "humidity_stats": stats(humids),
+        "noise_db": noises, "noise_stats": stats(noises),
+        "spo2": spo2s, "spo2_stats": stats(spo2s),
+        "movement_freq": movements, "movement_stats": stats(movements),
+        "quality_scores": quality,
+    })
+
+
+@vis_bp.route("/public/environment_vs_quality", methods=["GET"])
+def public_environment_vs_quality():
+    """公开版环境参数 vs 睡眠质量散点数据"""
+    records = _get_public_records()
+
+    pairs = {"temperature": [], "humidity": [], "noise_db": [], "spo2": [], "movement_freq": []}
+    for r in records:
+        sq = r.sleepQualityScore
+        if not sq: continue
+        for key, attr in [("temperature", "temperature"), ("humidity", "humidity"),
+                           ("noise_db", "noise_db"), ("spo2", "spo2"),
+                           ("movement_freq", "movement_freq")]:
+            val = getattr(r, attr, None)
+            if val is not None:
+                pairs[key].append([round(val, 1), round(sq, 1)])
+
+    import math
+    corrs = {}
+    for key, data in pairs.items():
+        if len(data) < 3: corrs[key] = 0; continue
+        xs = [d[0] for d in data]; ys = [d[1] for d in data]
+        n = len(xs)
+        mx, my = sum(xs)/n, sum(ys)/n
+        sx = math.sqrt(sum((x-mx)**2 for x in xs))
+        sy = math.sqrt(sum((y-my)**2 for y in ys))
+        if sx == 0 or sy == 0: corrs[key] = 0; continue
+        corrs[key] = round(sum((xs[i]-mx)*(ys[i]-my) for i in range(n))/(sx*sy), 4)
+
+    return jsonify({
+        "scatter_data": pairs,
+        "correlation_with_quality": corrs,
+        "labels": {
+            "temperature": "温度(°C)", "humidity": "湿度(%)",
+            "noise_db": "噪声(dB)", "spo2": "血氧(%)",
+            "movement_freq": "体动(次/分钟)",
+        },
     })

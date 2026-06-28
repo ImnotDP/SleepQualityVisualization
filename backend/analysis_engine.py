@@ -4,15 +4,28 @@ import pandas as pd
 from datetime import datetime
 from collections import defaultdict
 
-from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.linear_model import (LinearRegression, LogisticRegression,
+                                   Ridge, Lasso, ElasticNet, BayesianRidge)
+from sklearn.ensemble import (RandomForestClassifier, RandomForestRegressor,
+                               GradientBoostingRegressor, GradientBoostingClassifier,
+                               AdaBoostRegressor, ExtraTreesRegressor)
 from sklearn.svm import SVR
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.tree import DecisionTreeRegressor
 from sklearn.model_selection import GridSearchCV, cross_val_score, train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import (accuracy_score, f1_score, r2_score,
                              mean_absolute_error, mean_squared_error,
                              classification_report)
+
+# XGBoost 可选导入
+try:
+    from xgboost import XGBRegressor, XGBClassifier
+    HAS_XGBOOST = True
+except ImportError:
+    HAS_XGBOOST = False
+    log_import = logging.getLogger(__name__)
+    log_import.warning("XGBoost 未安装，将跳过 XGBoost 模型")
 
 log = logging.getLogger(__name__)
 
@@ -24,21 +37,40 @@ np.random.seed(SEED)
 
 
 def load_raw_data(data_dir: str = DATA_DIR) -> dict:
-    """加载 DATA/ 下所有 CSV，返回 {key: DataFrame}"""
+    """加载 DATA/ 下所有数据文件（CSV/Parquet/TXT），返回 {key: DataFrame}"""
     datasets = {}
     for folder in sorted(os.listdir(data_dir)):
         fp = os.path.join(data_dir, folder)
         if not os.path.isdir(fp):
             continue
         for fname in os.listdir(fp):
-            if not fname.endswith(".csv"):
+            ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+            if ext not in ("csv", "parquet", "txt"):
                 continue
             key = folder.lower()
             fpath = os.path.join(fp, fname)
             try:
-                df = pd.read_csv(fpath, encoding="utf-8")
-            except Exception:
-                df = pd.read_csv(fpath, encoding="utf-8", on_bad_lines="skip")
+                if ext == "parquet":
+                    df = pd.read_parquet(fpath)
+                elif ext == "txt":
+                    for sep in [",", "\t", "|", ";"]:
+                        try:
+                            df = pd.read_csv(fpath, sep=sep, encoding="utf-8", nrows=5)
+                            if len(df.columns) > 1:
+                                df = pd.read_csv(fpath, sep=sep, encoding="utf-8")
+                                break
+                        except Exception:
+                            continue
+                    else:
+                        df = pd.read_csv(fpath, encoding="utf-8")
+                else:
+                    try:
+                        df = pd.read_csv(fpath, encoding="utf-8")
+                    except Exception:
+                        df = pd.read_csv(fpath, encoding="utf-8", on_bad_lines="skip")
+            except Exception as e:
+                log.warning("读取 %s 失败：%s", fpath, e)
+                continue
             datasets[key] = df
     return datasets
 
@@ -137,8 +169,24 @@ def compute_sleep_score(deep_ratio: float, rem_ratio: float,
 
 def train_regression_models(X: np.ndarray, y: np.ndarray) -> dict:
     """
-    训练回归模型预测睡眠质量评分（1-10分）
-    模型：SVR, LinearRegression, RandomForestRegressor
+    训练多种回归模型预测睡眠质量评分（1-10分）。
+    
+    算法列表：
+    1. SVR (支持向量回归) — 核方法，捕捉非线性关系
+    2. Linear Regression (线性回归) — 基准模型，可解释性强
+    3. Random Forest (随机森林回归) — 集成学习，处理非线性
+    4. Gradient Boosting (梯度提升回归) — 逐步优化残差
+    5. XGBoost (极端梯度提升) — 优化的梯度提升实现
+    6. Decision Tree (决策树回归) — 树模型基准
+    7. Ridge Regression (岭回归) — L2正则化
+    8. Lasso Regression (套索回归) — L1正则化，特征选择
+    9. ElasticNet (弹性网络) — L1+L2混合正则化
+    10. KNN Regression (K近邻回归) — 基于实例的学习
+    11. Bayesian Ridge (贝叶斯岭回归) — 概率线性模型
+    12. AdaBoost Regression (自适应增强回归) — 自适应提升
+    13. Extra Trees (极端随机树) — 更随机的集成
+    
+    返回各模型的评估指标和最佳模型名称。
     """
     if len(X) < 10:
         return {"error": "数据不足，至少需要10条记录"}
@@ -151,53 +199,278 @@ def train_regression_models(X: np.ndarray, y: np.ndarray) -> dict:
     X_test_s = scaler.transform(X_test)
 
     results = {}
+    n_features = X.shape[1]
 
-    # --- SVR with GridSearch ---
+    # --- 1. SVR (支持向量回归) ---
+    # 原理：在高维空间寻找最优超平面，通过核函数处理非线性关系
     svr_params = {"kernel": ["rbf", "linear"],
                   "C": [0.1, 1, 10],
                   "gamma": ["scale", "auto"]}
-    svr_gs = GridSearchCV(SVR(), svr_params, cv=min(5, len(X_train)),
-                          scoring="r2", n_jobs=-1)
-    svr_gs.fit(X_train_s, y_train)
-    svr_pred = svr_gs.best_estimator_.predict(X_test_s)
-    results["svr"] = {
-        "model": svr_gs.best_estimator_,
-        "scaler": scaler,
-        "best_params": svr_gs.best_params_,
-        "r2": round(r2_score(y_test, svr_pred), 4),
-        "mae": round(mean_absolute_error(y_test, svr_pred), 4),
-        "rmse": round(np.sqrt(mean_squared_error(y_test, svr_pred)), 4),
-    }
+    try:
+        svr_gs = GridSearchCV(SVR(), svr_params, cv=min(5, len(X_train)),
+                              scoring="r2", n_jobs=-1)
+        svr_gs.fit(X_train_s, y_train)
+        svr_pred = svr_gs.best_estimator_.predict(X_test_s)
+        results["svr"] = {
+            "model": svr_gs.best_estimator_,
+            "scaler": scaler,
+            "best_params": svr_gs.best_params_,
+            "r2": round(r2_score(y_test, svr_pred), 4),
+            "mae": round(mean_absolute_error(y_test, svr_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, svr_pred)), 4),
+        }
+    except Exception as e:
+        log.warning("SVR 训练失败：%s", e)
 
-    # --- Linear Regression ---
-    lr = LinearRegression()
-    lr.fit(X_train_s, y_train)
-    lr_pred = lr.predict(X_test_s)
-    results["linear"] = {
-        "model": lr,
-        "scaler": scaler,
-        "r2": round(r2_score(y_test, lr_pred), 4),
-        "mae": round(mean_absolute_error(y_test, lr_pred), 4),
-        "rmse": round(np.sqrt(mean_squared_error(y_test, lr_pred)), 4),
-        "coef": lr.coef_.tolist(),
-    }
+    # --- 2. Linear Regression (线性回归) ---
+    # 原理：最小二乘法拟合线性关系 y = w·x + b
+    try:
+        lr = LinearRegression()
+        lr.fit(X_train_s, y_train)
+        lr_pred = lr.predict(X_test_s)
+        results["linear"] = {
+            "model": lr,
+            "scaler": scaler,
+            "r2": round(r2_score(y_test, lr_pred), 4),
+            "mae": round(mean_absolute_error(y_test, lr_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, lr_pred)), 4),
+            "coef": lr.coef_.tolist(),
+        }
+    except Exception as e:
+        log.warning("LinearRegression 训练失败：%s", e)
 
-    # --- RandomForest Regressor ---
-    rf = RandomForestRegressor(n_estimators=100, random_state=SEED)
-    rf.fit(X_train, y_train)
-    rf_pred = rf.predict(X_test)
-    results["rf"] = {
-        "model": rf,
-        "r2": round(r2_score(y_test, rf_pred), 4),
-        "mae": round(mean_absolute_error(y_test, rf_pred), 4),
-        "rmse": round(np.sqrt(mean_squared_error(y_test, rf_pred)), 4),
-        "feature_importance": rf.feature_importances_.tolist(),
-    }
+    # --- 3. Random Forest Regressor (随机森林回归) ---
+    # 原理：Bagging + 随机特征选择，多棵决策树投票（平均）
+    try:
+        rf = RandomForestRegressor(n_estimators=100, random_state=SEED, n_jobs=-1)
+        rf.fit(X_train, y_train)
+        rf_pred = rf.predict(X_test)
+        results["rf"] = {
+            "model": rf,
+            "r2": round(r2_score(y_test, rf_pred), 4),
+            "mae": round(mean_absolute_error(y_test, rf_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, rf_pred)), 4),
+            "feature_importance": rf.feature_importances_.tolist(),
+        }
+    except Exception as e:
+        log.warning("RandomForest 训练失败：%s", e)
 
-    # 选出最佳模型
+    # --- 4. Gradient Boosting Regressor (梯度提升回归) ---
+    # 原理：逐步添加弱学习器（决策树），每个新学习器拟合前一阶段的残差
+    try:
+        gb_params = {"n_estimators": [50, 100, 200],
+                     "learning_rate": [0.05, 0.1, 0.2],
+                     "max_depth": [3, 5, 7]}
+        gb_gs = GridSearchCV(GradientBoostingRegressor(random_state=SEED),
+                             gb_params, cv=min(3, len(X_train)),
+                             scoring="r2", n_jobs=-1)
+        gb_gs.fit(X_train, y_train)
+        gb_pred = gb_gs.best_estimator_.predict(X_test)
+        results["gradient_boosting"] = {
+            "model": gb_gs.best_estimator_,
+            "best_params": gb_gs.best_params_,
+            "r2": round(r2_score(y_test, gb_pred), 4),
+            "mae": round(mean_absolute_error(y_test, gb_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, gb_pred)), 4),
+            "feature_importance": gb_gs.best_estimator_.feature_importances_.tolist(),
+        }
+    except Exception as e:
+        log.warning("GradientBoosting 训练失败：%s", e)
+
+    # --- 5. XGBoost (极端梯度提升) ---
+    # 原理：优化的梯度提升实现，支持正则化、并行计算、缺失值处理
+    if HAS_XGBOOST:
+        try:
+            xgb = XGBRegressor(n_estimators=100, learning_rate=0.1,
+                               max_depth=6, random_state=SEED, verbosity=0)
+            xgb.fit(X_train, y_train)
+            xgb_pred = xgb.predict(X_test)
+            results["xgboost"] = {
+                "model": xgb,
+                "r2": round(r2_score(y_test, xgb_pred), 4),
+                "mae": round(mean_absolute_error(y_test, xgb_pred), 4),
+                "rmse": round(np.sqrt(mean_squared_error(y_test, xgb_pred)), 4),
+                "feature_importance": xgb.feature_importances_.tolist(),
+            }
+        except Exception as e:
+            log.warning("XGBoost 训练失败：%s", e)
+
+    # --- 6. Decision Tree Regressor (决策树回归) ---
+    # 原理：通过递归划分特征空间，在每个叶节点用均值预测
+    try:
+        dt_params = {"max_depth": [3, 5, 7, 10, None],
+                     "min_samples_split": [2, 5, 10]}
+        dt_gs = GridSearchCV(DecisionTreeRegressor(random_state=SEED),
+                             dt_params, cv=min(5, len(X_train)),
+                             scoring="r2", n_jobs=-1)
+        dt_gs.fit(X_train, y_train)
+        dt_pred = dt_gs.best_estimator_.predict(X_test)
+        results["decision_tree"] = {
+            "model": dt_gs.best_estimator_,
+            "best_params": dt_gs.best_params_,
+            "r2": round(r2_score(y_test, dt_pred), 4),
+            "mae": round(mean_absolute_error(y_test, dt_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, dt_pred)), 4),
+        }
+    except Exception as e:
+        log.warning("DecisionTree 训练失败：%s", e)
+
+    # --- 7. Ridge Regression (岭回归) ---
+    # 原理：L2正则化线性回归，惩罚大系数，减少过拟合
+    try:
+        ridge_params = {"alpha": [0.01, 0.1, 1.0, 10.0, 100.0]}
+        ridge_gs = GridSearchCV(Ridge(random_state=SEED), ridge_params,
+                                cv=min(5, len(X_train)), scoring="r2")
+        ridge_gs.fit(X_train_s, y_train)
+        ridge_pred = ridge_gs.best_estimator_.predict(X_test_s)
+        results["ridge"] = {
+            "model": ridge_gs.best_estimator_,
+            "scaler": scaler,
+            "best_params": ridge_gs.best_params_,
+            "r2": round(r2_score(y_test, ridge_pred), 4),
+            "mae": round(mean_absolute_error(y_test, ridge_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, ridge_pred)), 4),
+            "coef": ridge_gs.best_estimator_.coef_.tolist(),
+        }
+    except Exception as e:
+        log.warning("Ridge 训练失败：%s", e)
+
+    # --- 8. Lasso Regression (套索回归) ---
+    # 原理：L1正则化，自动特征选择，将不重要特征的系数压缩为0
+    try:
+        lasso_params = {"alpha": [0.001, 0.01, 0.1, 1.0]}
+        lasso_gs = GridSearchCV(Lasso(random_state=SEED, max_iter=5000),
+                                lasso_params, cv=min(5, len(X_train)), scoring="r2")
+        lasso_gs.fit(X_train_s, y_train)
+        lasso_pred = lasso_gs.best_estimator_.predict(X_test_s)
+        results["lasso"] = {
+            "model": lasso_gs.best_estimator_,
+            "scaler": scaler,
+            "best_params": lasso_gs.best_params_,
+            "r2": round(r2_score(y_test, lasso_pred), 4),
+            "mae": round(mean_absolute_error(y_test, lasso_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, lasso_pred)), 4),
+            "coef": lasso_gs.best_estimator_.coef_.tolist(),
+        }
+    except Exception as e:
+        log.warning("Lasso 训练失败：%s", e)
+
+    # --- 9. ElasticNet (弹性网络) ---
+    # 原理：L1+L2混合正则化，兼具Ridge的稳定性和Lasso的稀疏性
+    try:
+        enet_params = {"alpha": [0.01, 0.1, 1.0],
+                       "l1_ratio": [0.1, 0.5, 0.7, 0.9]}
+        enet_gs = GridSearchCV(ElasticNet(random_state=SEED, max_iter=5000),
+                               enet_params, cv=min(5, len(X_train)), scoring="r2")
+        enet_gs.fit(X_train_s, y_train)
+        enet_pred = enet_gs.best_estimator_.predict(X_test_s)
+        results["elastic_net"] = {
+            "model": enet_gs.best_estimator_,
+            "scaler": scaler,
+            "best_params": enet_gs.best_params_,
+            "r2": round(r2_score(y_test, enet_pred), 4),
+            "mae": round(mean_absolute_error(y_test, enet_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, enet_pred)), 4),
+            "coef": enet_gs.best_estimator_.coef_.tolist(),
+        }
+    except Exception as e:
+        log.warning("ElasticNet 训练失败：%s", e)
+
+    # --- 10. KNN Regression (K近邻回归) ---
+    # 原理：基于K个最近邻居的均值进行预测，非参数方法
+    try:
+        knn_params = {"n_neighbors": [3, 5, 7, 9, 11],
+                      "weights": ["uniform", "distance"]}
+        knn_gs = GridSearchCV(KNeighborsRegressor(), knn_params,
+                              cv=min(5, len(X_train)), scoring="r2")
+        knn_gs.fit(X_train_s, y_train)
+        knn_pred = knn_gs.best_estimator_.predict(X_test_s)
+        results["knn"] = {
+            "model": knn_gs.best_estimator_,
+            "scaler": scaler,
+            "best_params": knn_gs.best_params_,
+            "r2": round(r2_score(y_test, knn_pred), 4),
+            "mae": round(mean_absolute_error(y_test, knn_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, knn_pred)), 4),
+        }
+    except Exception as e:
+        log.warning("KNN Regression 训练失败：%s", e)
+
+    # --- 11. Bayesian Ridge (贝叶斯岭回归) ---
+    # 原理：概率线性模型，通过贝叶斯推断自动调节正则化参数
+    try:
+        br = BayesianRidge()
+        br.fit(X_train_s, y_train)
+        br_pred = br.predict(X_test_s)
+        results["bayesian_ridge"] = {
+            "model": br,
+            "scaler": scaler,
+            "r2": round(r2_score(y_test, br_pred), 4),
+            "mae": round(mean_absolute_error(y_test, br_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, br_pred)), 4),
+            "coef": br.coef_.tolist(),
+        }
+    except Exception as e:
+        log.warning("BayesianRidge 训练失败：%s", e)
+
+    # --- 12. AdaBoost Regression (自适应增强回归) ---
+    # 原理：迭代调整样本权重，使后续弱学习器关注之前预测错误的样本
+    try:
+        ada_params = {"n_estimators": [50, 100, 200],
+                      "learning_rate": [0.5, 1.0, 1.5]}
+        ada_gs = GridSearchCV(AdaBoostRegressor(random_state=SEED),
+                              ada_params, cv=min(3, len(X_train)),
+                              scoring="r2", n_jobs=-1)
+        ada_gs.fit(X_train, y_train)
+        ada_pred = ada_gs.best_estimator_.predict(X_test)
+        results["adaboost"] = {
+            "model": ada_gs.best_estimator_,
+            "best_params": ada_gs.best_params_,
+            "r2": round(r2_score(y_test, ada_pred), 4),
+            "mae": round(mean_absolute_error(y_test, ada_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, ada_pred)), 4),
+        }
+    except Exception as e:
+        log.warning("AdaBoost 训练失败：%s", e)
+
+    # --- 13. Extra Trees Regressor (极端随机树) ---
+    # 原理：与随机森林类似但在分裂点选择上更随机，方差更小
+    try:
+        et = ExtraTreesRegressor(n_estimators=100, random_state=SEED, n_jobs=-1)
+        et.fit(X_train, y_train)
+        et_pred = et.predict(X_test)
+        results["extra_trees"] = {
+            "model": et,
+            "r2": round(r2_score(y_test, et_pred), 4),
+            "mae": round(mean_absolute_error(y_test, et_pred), 4),
+            "rmse": round(np.sqrt(mean_squared_error(y_test, et_pred)), 4),
+            "feature_importance": et.feature_importances_.tolist(),
+        }
+    except Exception as e:
+        log.warning("ExtraTrees 训练失败：%s", e)
+
+    # --- 选出最佳模型（基于R²） ---
     best = max(results.keys(), key=lambda k: results[k].get("r2", -999))
     results["best_model"] = best
     results["test_size"] = len(X_test)
+
+    # 添加算法对照表字典
+    results["algorithm_names"] = {
+        "svr": "支持向量回归(SVR)",
+        "linear": "线性回归(Linear)",
+        "rf": "随机森林(RF)",
+        "gradient_boosting": "梯度提升(GBRT)",
+        "xgboost": "XGBoost",
+        "decision_tree": "决策树(DT)",
+        "ridge": "岭回归(Ridge)",
+        "lasso": "套索回归(Lasso)",
+        "elastic_net": "弹性网络(ElasticNet)",
+        "knn": "K近邻回归(KNN)",
+        "bayesian_ridge": "贝叶斯岭回归(BayesianRidge)",
+        "adaboost": "自适应增强(AdaBoost)",
+        "extra_trees": "极端随机树(ExtraTrees)",
+    }
+
     return results
 
 

@@ -5,37 +5,29 @@
       ⚠️ {{ dbWarning }}
     </div>
 
-    <!-- 顶部菜单栏（始终可见） -->
-    <el-header class="app-header">
+    <!-- 顶部菜单栏（始终可见，全部展开） -->
+    <header class="app-header">
       <div class="header-left">
         <span class="nav-brand">🌙 睡眠质量分析系统</span>
-        <el-menu
-          mode="horizontal"
-          :default-active="activeRoute"
-          router
-          background-color="transparent"
-          text-color="#e0e0e0"
-          active-text-color="#ffd04b"
-          class="nav-menu"
-        >
-          <!-- 公开菜单（所有人可见） -->
-          <el-menu-item index="/home">🏠 首页</el-menu-item>
-          <el-menu-item index="/vis">📊 可视化分析</el-menu-item>
+        <nav class="nav-links">
+          <!-- 公开导航（所有人可见） -->
+          <router-link to="/home" class="nav-link" active-class="nav-link--active">🏠 首页</router-link>
+          <router-link to="/vis" class="nav-link" active-class="nav-link--active">📊 可视化分析</router-link>
 
-          <!-- 登录后菜单 -->
+          <!-- 登录后导航 -->
           <template v-if="isLoggedIn">
-            <el-menu-item index="/user/data">📁 数据管理</el-menu-item>
-            <el-menu-item index="/user/predict">🔮 睡眠预测</el-menu-item>
-            <el-menu-item index="/user/center">👤 个人中心</el-menu-item>
+            <router-link to="/user/data" class="nav-link" active-class="nav-link--active">📁 数据管理</router-link>
+            <router-link to="/user/predict" class="nav-link" active-class="nav-link--active">🔮 睡眠预测</router-link>
+            <router-link to="/user/center" class="nav-link" active-class="nav-link--active">👤 个人中心</router-link>
           </template>
 
-          <!-- 管理员菜单 -->
+          <!-- 管理员导航 -->
           <template v-if="isAdmin">
-            <el-menu-item index="/admin/home">🛡️ 管理首页</el-menu-item>
-            <el-menu-item index="/admin/users">👥 用户管理</el-menu-item>
-            <el-menu-item index="/admin/vis">📈 群体分析</el-menu-item>
+            <router-link to="/admin/home" class="nav-link nav-link--admin" active-class="nav-link--active">🛡️ 管理首页</router-link>
+            <router-link to="/admin/users" class="nav-link nav-link--admin" active-class="nav-link--active">👥 用户管理</router-link>
+            <router-link to="/admin/vis" class="nav-link nav-link--admin" active-class="nav-link--active">📈 群体分析</router-link>
           </template>
-        </el-menu>
+        </nav>
       </div>
       <div class="header-right">
         <!-- 未登录 -->
@@ -51,7 +43,7 @@
           <el-button type="danger" text size="small" @click="doLogout">退出</el-button>
         </template>
       </div>
-    </el-header>
+    </header>
 
     <!-- 主内容区 -->
     <el-main class="app-main">
@@ -120,30 +112,64 @@ body { background: #0f1923; color: #e0e0e0; font-family: 'Segoe UI', sans-serif;
   background: #e6a23c; color: #000; text-align: center; padding: 6px; font-size: 13px;
 }
 
-/* ====== 顶部菜单栏（始终可见） ====== */
+/* ====== 顶部导航栏（始终可见，全展开不折叠） ====== */
 .app-header {
   display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: nowrap;
   background: linear-gradient(135deg, #1a2a3a 0%, #0f1923 100%);
   border-bottom: 1px solid #2a3a4a;
-  padding: 0 20px; height: 56px;
+  padding: 8px 20px; min-height: 56px;
 }
-.header-left { display: flex; align-items: center; gap: 10px; }
-.header-right { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.header-left {
+  display: flex; align-items: center; gap: 12px;
+  flex-wrap: wrap; flex: 1 1 auto; min-width: 0;
+}
+.header-right {
+  display: flex; align-items: center; gap: 12px;
+  flex-shrink: 0; white-space: nowrap;
+  margin-left: 16px;
+  padding-left: 16px;
+  border-left: 1px solid #2a3a4a;
+}
 .nav-brand {
   color: #ffd04b; font-weight: bold; font-size: 16px; white-space: nowrap;
-  margin-right: 10px;
+  margin-right: 4px;
 }
-.nav-menu {
-  background: transparent !important; border-bottom: none !important;
+
+/* ====== 导航链接行（永远平铺不解锁） ====== */
+.nav-links {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
 }
-.nav-menu .el-menu-item {
-  color: #ccc !important; border-bottom: 2px solid transparent !important;
-  height: 56px; line-height: 56px;
+.nav-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 500;
+  color: #b0b8c4;
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
 }
-.nav-menu .el-menu-item:hover,
-.nav-menu .el-menu-item.is-active {
-  color: #ffd04b !important; border-bottom-color: #ffd04b !important;
-  background: transparent !important;
+.nav-link:hover {
+  color: #ffd04b;
+  background: rgba(255,208,75,0.08);
+  border-bottom-color: rgba(255,208,75,0.3);
+}
+.nav-link--active {
+  color: #ffd04b !important;
+  background: rgba(255,208,75,0.12);
+  border-bottom-color: #ffd04b;
+  font-weight: 600;
+}
+.nav-link--admin {
+  color: #e07080;
+}
+.nav-link--admin:hover,
+.nav-link--admin.nav-link--active {
+  color: #ff8090 !important;
+  border-bottom-color: #ff8090;
+  background: rgba(255,100,120,0.1);
 }
 .username { color: #ccc; font-size: 14px; }
 

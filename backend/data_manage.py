@@ -55,13 +55,34 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def _quick_preprocess_csv(filepath: str, user_id: int) -> list:
     """
-    读取上传的 CSV，解析列并返回 SleepRecord 字典列表。
-    兼容多种 CSV 格式（小米手环 Zepp 导出 / 自定义格式）。
+    读取上传的文件（支持 CSV/Parquet/TXT），解析列并返回 SleepRecord 字典列表。
+    兼容多种格式（小米手环 Zepp 导出 / 自定义格式 / Parquet / TXT）。
     """
+    ext = filepath.rsplit(".", 1)[-1].lower() if "." in filepath else "csv"
+
     try:
-        df = pd.read_csv(filepath, encoding="utf-8")
-    except Exception:
-        df = pd.read_csv(filepath, encoding="utf-8", on_bad_lines="skip")
+        if ext == "parquet":
+            df = pd.read_parquet(filepath)
+        elif ext == "txt":
+            # TXT: 尝试多种分隔符
+            for sep in [",", "\t", "|", ";"]:
+                try:
+                    df = pd.read_csv(filepath, sep=sep, encoding="utf-8", nrows=5)
+                    if len(df.columns) > 1:
+                        df = pd.read_csv(filepath, sep=sep, encoding="utf-8")
+                        break
+                except Exception:
+                    continue
+            else:
+                df = pd.read_csv(filepath, encoding="utf-8")
+        else:
+            try:
+                df = pd.read_csv(filepath, encoding="utf-8")
+            except Exception:
+                df = pd.read_csv(filepath, encoding="utf-8", on_bad_lines="skip")
+    except Exception as e:
+        log.warning("读取文件失败 %s：%s", filepath, e)
+        return []
 
     records = []
     # 尝试自动识别日期列

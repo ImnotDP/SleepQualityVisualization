@@ -96,26 +96,44 @@ def _read_csv_robust(fpath: str) -> pd.DataFrame:
 
 
 def read_all_csvs(data_dir: str) -> Dict[str, pd.DataFrame]:
-    """读取 DATA/ 下所有 CSV，返回 {key: DataFrame}"""
+    """读取 DATA/ 下所有数据文件（支持 CSV/Parquet/TXT），返回 {key: DataFrame}"""
     datasets = {}
     for folder in sorted(os.listdir(data_dir)):
         folder_path = os.path.join(data_dir, folder)
         if not os.path.isdir(folder_path):
             continue
         for fname in os.listdir(folder_path):
-            if not fname.endswith(".csv"):
+            ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+            if ext not in ("csv", "parquet", "txt"):
                 continue
             key = folder.lower()
             fpath = os.path.join(folder_path, fname)
             try:
-                df = pd.read_csv(fpath, encoding="utf-8")
-            except (pd.errors.ParserError, Exception):
-                try:
-                    df = pd.read_csv(fpath, encoding="utf-8", quoting=0, on_bad_lines="skip")
-                except Exception:
-                    df = _read_csv_robust(fpath)
-            datasets[key] = df
-            log.info("读取 %s/%s → %s 行 × %s 列", folder, fname, len(df), len(df.columns))
+                if ext == "parquet":
+                    df = pd.read_parquet(fpath)
+                elif ext == "txt":
+                    for sep in [",", "\t", "|", ";"]:
+                        try:
+                            df = pd.read_csv(fpath, sep=sep, encoding="utf-8", nrows=5)
+                            if len(df.columns) > 1:
+                                df = pd.read_csv(fpath, sep=sep, encoding="utf-8")
+                                break
+                        except Exception:
+                            continue
+                    else:
+                        df = pd.read_csv(fpath, encoding="utf-8")
+                else:  # csv
+                    try:
+                        df = pd.read_csv(fpath, encoding="utf-8")
+                    except (pd.errors.ParserError, Exception):
+                        try:
+                            df = pd.read_csv(fpath, encoding="utf-8", quoting=0, on_bad_lines="skip")
+                        except Exception:
+                            df = _read_csv_robust(fpath)
+                datasets[key] = df
+                log.info("读取 %s/%s (%s) → %s 行 × %s 列", folder, fname, ext, len(df), len(df.columns))
+            except Exception as e:
+                log.warning("读取 %s/%s 失败：%s", folder, fname, e)
     return datasets
 
 
@@ -561,6 +579,11 @@ def build_daily_records(processed: Dict[str, pd.DataFrame]) -> List[dict]:
             "stdHeartRate": round(float(row.get("stdHeartRate", 0) or 0), 2),
             "nightAvgHR": round(float(row.get("nightAvgHR", 0) or 0), 1),
             "nightAvgRR": round(float(row.get("nightAvgRR", 0) or 0), 1),
+            "temperature": round(float(row.get("temperature", 22) or 22), 1),
+            "humidity": round(float(row.get("humidity", 55) or 55), 1),
+            "noise_db": round(float(row.get("noise_db", 35) or 35), 1),
+            "spo2": round(float(row.get("spo2", 97) or 97), 1),
+            "movement_freq": round(float(row.get("movement_freq", 5) or row.get("movement_freq_per_hour", 5) or 5), 1),
             "naps": str(row.get("naps", "[]")),
             "uploaded_at": datetime.utcnow(),
         }

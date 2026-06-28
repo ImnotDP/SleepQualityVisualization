@@ -35,18 +35,28 @@
               </el-col>
             </el-row>
           </div>
-          <!-- 模型对比 -->
+          <!-- 模型对比 - 全算法表格 -->
           <div v-if="result.model_comparison" style="margin-bottom:16px">
-            <h4>🤖 模型对比 (R²)</h4>
-            <el-row :gutter="8">
-              <el-col :span="8" v-for="(v,k) in result.model_comparison" :key="k">
-                <el-card shadow="hover" :class="{'best-model':k===result.best_model}">
-                  <div style="text-align:center;font-weight:bold">{{ {svr:'SVR',linear:'线性回归',rf:'随机森林'}[k]||k }}</div>
-                  <div style="text-align:center;font-size:18px;color:#409eff">{{ v.r2 }}</div>
-                </el-card>
-              </el-col>
-            </el-row>
-            <div style="text-align:right;font-size:11px;color:#999;margin-top:4px">最佳: {{ result.best_model }}</div>
+            <h4>🤖 全模型对比 (R²)</h4>
+            <el-table :data="modelCompareList" size="small" stripe max-height="350" style="margin-top:8px">
+              <el-table-column prop="name" label="算法模型" width="200" />
+              <el-table-column prop="r2" label="R²" sortable width="90">
+                <template #default="{row}">
+                  <span :style="{color:row.r2>0.6?'#67c23a':row.r2>0.3?'#409eff':'#e6a23c',fontWeight:row.key===result.best_model?'bold':'normal'}">{{ row.r2 }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="mae" label="MAE" sortable width="90" />
+              <el-table-column prop="rmse" label="RMSE" sortable width="90" />
+              <el-table-column label="评级" width="80">
+                <template #default="{row}">
+                  <el-tag :type="row.r2>0.6?'success':row.r2>0.3?'primary':'warning'" size="small">{{ row.r2>0.6?'优':row.r2>0.3?'中':'弱' }}</el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
+            <div style="text-align:right;font-size:11px;color:#999;margin-top:4px">
+              最佳模型：<strong style="color:#67c23a">{{ result.best_model_name || result.best_model }}</strong>
+              <span v-if="result.suggestions_source" style="margin-left:10px">建议来源：<el-tag size="small" :type="result.suggestions_source==='deepseek'?'success':'info'">{{ result.suggestions_source==='deepseek'?'DeepSeek AI':'规则引擎' }}</el-tag></span>
+            </div>
           </div>
           <el-divider />
           <h4>特征重要性排行</h4>
@@ -83,7 +93,12 @@ const fields = [
   { key:'REMRatio', label:'REM比例(0-1)', step:0.05 },
   { key:'daySteps', label:'日步数', step:500 },
   { key:'dayCalories', label:'日卡路里', step:50 },
-  { key:'avgHeartRate', label:'平均心率', step:1 },
+  { key:'avgHeartRate', label:'平均心率(bpm)', step:1 },
+  { key:'temperature', label:'环境温度(°C)', step:0.5 },
+  { key:'humidity', label:'环境湿度(%)', step:1 },
+  { key:'noise_db', label:'噪声分贝(dB)', step:1 },
+  { key:'spo2', label:'血氧饱和度(%)', step:0.5 },
+  { key:'movement_freq', label:'体动频率(次/分钟)', step:1 },
 ]
 
 const form = reactive(Object.fromEntries(fields.map(f=>[f.key,null])))
@@ -94,6 +109,20 @@ const impList = computed(() => {
   if (!result.value?.feature_importance) return []
   const labels = Object.fromEntries(fields.map(f=>[f.key,f.label]))
   return Object.entries(result.value.feature_importance).map(([k,v])=>({label:labels[k]||k,importance:v,direction:v>0?'正向':'负向'}))
+})
+
+const modelCompareList = computed(() => {
+  if (!result.value?.model_comparison) return []
+  return Object.entries(result.value.model_comparison)
+    .filter(([k,v]) => v && typeof v.r2 === 'number')
+    .map(([key, val]) => ({
+      key,
+      name: val.name || key,
+      r2: val.r2,
+      mae: val.mae,
+      rmse: val.rmse,
+    }))
+    .sort((a, b) => (b.r2 || 0) - (a.r2 || 0))
 })
 
 const ratingType = computed(() => {

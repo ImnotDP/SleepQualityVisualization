@@ -72,6 +72,13 @@ class SleepRecord(db.Model):
     stdHeartRate = db.Column(db.Float, default=0)
     nightAvgHR = db.Column(db.Float, default=0)
     nightAvgRR = db.Column(db.Float, default=0)
+    # 环境参数
+    temperature = db.Column(db.Float, default=22.0)
+    humidity = db.Column(db.Float, default=55.0)
+    noise_db = db.Column(db.Float, default=35.0)
+    # 生理扩展
+    spo2 = db.Column(db.Float, default=97.0)
+    movement_freq = db.Column(db.Float, default=5.0)
     naps = db.Column(db.Text, default="[]")
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -100,6 +107,11 @@ class SleepRecord(db.Model):
             "stdHeartRate": self.stdHeartRate,
             "nightAvgHR": self.nightAvgHR,
             "nightAvgRR": self.nightAvgRR,
+            "temperature": self.temperature,
+            "humidity": self.humidity,
+            "noise_db": self.noise_db,
+            "spo2": self.spo2,
+            "movement_freq": self.movement_freq,
             "naps": self.naps,
             "uploaded_at": self.uploaded_at.isoformat() if self.uploaded_at else None,
         }

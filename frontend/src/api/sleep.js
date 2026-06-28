@@ -88,6 +88,12 @@ export function getScatterMatrixData() {
 export function getSleepStructure() {
   return api.get('/vis/sleep_structure')
 }
+export function getEnvironmentData() {
+  return api.get('/vis/environment')
+}
+export function getEnvironmentVsQuality() {
+  return api.get('/vis/environment_vs_quality')
+}
 
 // ========== 公开可视化（无需登录） ==========
 export function getPublicTrend() {
@@ -110,6 +116,9 @@ export function getPublicSleepStructure() {
 export function predictScore(params) {
   return api.post('/predict/score', params)
 }
+export function quickScore(params) {
+  return api.post('/predict/quick_score', params)
+}
 export function getReports(page = 1, pageSize = 20) {
   return api.get('/predict/reports', { params: { page, page_size: pageSize } })
 }
@@ -117,6 +126,14 @@ export function getReportDetail(id) {
   return api.get(`/predict/reports/${id}`)
 }
 export function getFeatureAnalysis() {
+  return api.get('/predict/feature_analysis')
+}
+export function getAutoAnalysis() {
+  return api.post('/predict/auto_analysis')
+}
+
+// ========== 算法模型 ==========
+export function getAlgorithmComparison() {
   return api.get('/predict/feature_analysis')
 }
 

@@ -45,6 +45,7 @@ logs/
 # 运行时生成数据（不纳入版本控制）
 OUTPUT/
 DATA/
+*.db
 
 # 上传文件临时目录
 backend/uploads/
@@ -67,7 +68,7 @@ frontend/dist/
 # 敏感配置覆盖文件
 config.local.txt
 backend/config.local.txt
-config.txt
+backend/config.txt
 
 
 # others

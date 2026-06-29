@@ -66,8 +66,6 @@ frontend/dist/
 *.pdf
 
 # 敏感配置覆盖文件
-config.local.txt
-backend/config.local.txt
 backend/config.txt
 
 

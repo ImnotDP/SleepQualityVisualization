@@ -8,7 +8,7 @@ from sklearn.linear_model import (LinearRegression, LogisticRegression,
                                    Ridge, Lasso, ElasticNet, BayesianRidge)
 from sklearn.ensemble import (RandomForestClassifier, RandomForestRegressor,
                                GradientBoostingRegressor, GradientBoostingClassifier,
-                               AdaBoostRegressor, ExtraTreesRegressor)
+                               AdaBoostRegressor)
 from sklearn.svm import SVR
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.tree import DecisionTreeRegressor
@@ -184,7 +184,6 @@ def train_regression_models(X: np.ndarray, y: np.ndarray) -> dict:
     10. KNN Regression (K近邻回归) — 基于实例的学习
     11. Bayesian Ridge (贝叶斯岭回归) — 概率线性模型
     12. AdaBoost Regression (自适应增强回归) — 自适应提升
-    13. Extra Trees (极端随机树) — 更随机的集成
     
     返回各模型的评估指标和最佳模型名称。
     """
@@ -433,22 +432,6 @@ def train_regression_models(X: np.ndarray, y: np.ndarray) -> dict:
     except Exception as e:
         log.warning("AdaBoost 训练失败：%s", e)
 
-    # --- 13. Extra Trees Regressor (极端随机树) ---
-    # 原理：与随机森林类似但在分裂点选择上更随机，方差更小
-    try:
-        et = ExtraTreesRegressor(n_estimators=100, random_state=SEED, n_jobs=-1)
-        et.fit(X_train, y_train)
-        et_pred = et.predict(X_test)
-        results["extra_trees"] = {
-            "model": et,
-            "r2": round(r2_score(y_test, et_pred), 4),
-            "mae": round(mean_absolute_error(y_test, et_pred), 4),
-            "rmse": round(np.sqrt(mean_squared_error(y_test, et_pred)), 4),
-            "feature_importance": et.feature_importances_.tolist(),
-        }
-    except Exception as e:
-        log.warning("ExtraTrees 训练失败：%s", e)
-
     # --- 选出最佳模型（基于R²） ---
     best = max(results.keys(), key=lambda k: results[k].get("r2", -999))
     results["best_model"] = best
@@ -468,7 +451,6 @@ def train_regression_models(X: np.ndarray, y: np.ndarray) -> dict:
         "knn": "K近邻回归(KNN)",
         "bayesian_ridge": "贝叶斯岭回归(BayesianRidge)",
         "adaboost": "自适应增强(AdaBoost)",
-        "extra_trees": "极端随机树(ExtraTrees)",
     }
 
     return results

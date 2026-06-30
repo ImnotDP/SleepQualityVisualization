@@ -1,4 +1,4 @@
-import logging, math
+import logging, math, os, json
 from flask import Blueprint, request, jsonify
 from models import SleepRecord
 from auth import login_required, get_current_user, admin_required
@@ -521,4 +521,96 @@ def public_environment_vs_quality():
             "noise_db": "噪声(dB)", "spo2": "血氧(%)",
             "movement_freq": "体动(次/分钟)",
         },
+    })
+
+
+# ========== 公开全模型对比 ==========
+
+MODEL_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".model_cache.json")
+
+
+def _build_model_cache():
+    """训练模型并缓存结果到 JSON 文件"""
+    import numpy as np
+    records = _get_public_records()
+    if len(records) < 5:
+        return None
+
+    FEATURE_COLS = [
+        "totalSleepMinutes", "deepSleepTime", "shallowSleepTime", "REMTime",
+        "wakeTime", "sleepEfficiency", "deepSleepRatio", "REMRatio",
+        "daySteps", "dayCalories", "avgHeartRate",
+        "temperature", "humidity", "noise_db", "spo2", "movement_freq",
+    ]
+
+    X, y = [], []
+    for r in records:
+        feats = [getattr(r, f, 0) or 0 for f in FEATURE_COLS]
+        X.append(feats)
+        y.append(getattr(r, "sleepQualityScore", 0) or 0)
+    X, y = np.array(X), np.array(y)
+
+    from analysis_engine import train_regression_models
+    reg_results = train_regression_models(X, y)
+    if "error" in reg_results:
+        return None
+
+    algo_names = reg_results.get("algorithm_names", {})
+    model_comparison = {}
+    for name, info in reg_results.items():
+        if isinstance(info, dict) and "r2" in info:
+            model_comparison[name] = {
+                "name": algo_names.get(name, name),
+                "r2": info.get("r2"),
+                "mae": info.get("mae"),
+                "rmse": info.get("rmse"),
+            }
+
+    cache = {
+        "model_comparison": model_comparison,
+        "best_model": reg_results.get("best_model", ""),
+        "best_model_name": algo_names.get(reg_results.get("best_model", ""), ""),
+        "n_samples": int(len(X)),
+        "algorithm_names": algo_names,
+    }
+    with open(MODEL_CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(cache, f, ensure_ascii=False)
+    log.info("模型缓存已更新：%d 个模型", len(model_comparison))
+    return cache
+
+
+def _load_model_cache():
+    """加载缓存的模型对比结果"""
+    if os.path.exists(MODEL_CACHE_FILE):
+        try:
+            with open(MODEL_CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return None
+
+
+@vis_bp.route("/public/model_comparison", methods=["GET"])
+def public_model_comparison():
+    """公开版全模型算法对比：优先读缓存，无缓存时触发后台训练并返回提示"""
+    cache = _load_model_cache()
+    if cache:
+        return jsonify(cache)
+
+    # 无缓存 → 尝试快速构建（同步，可能较慢）
+    records = _get_public_records()
+    if len(records) < 5:
+        return jsonify({"error": "数据不足，至少需要5条记录"}), 400
+
+    try:
+        cache = _build_model_cache()
+        if cache:
+            return jsonify(cache)
+    except Exception as e:
+        log.warning("模型缓存构建失败：%s", e)
+
+    return jsonify({
+        "error": "模型正在训练中",
+        "message": "模型训练需要1-2分钟，请稍后刷新页面",
+        "pending": True,
     })

@@ -1,6 +1,8 @@
 import os
 import sys
+import json
 import logging
+from datetime import datetime
 
 from flask import Flask
 from flask_cors import CORS
@@ -161,25 +163,83 @@ def api_status():
     }
 
 
-# ---------- 启动时自动导入 DATA 数据 ----------
-def _auto_import_data():
-    """启动后检测表内数据为空时，自动运行完整预处理管线导入 DATA/ 目录数据"""
-    from models import SleepRecord, User
-    with app.app_context():
-        count = SleepRecord.query.count()
-        if count > 0:
-            log.info("数据库已有 %s 条记录，跳过自动导入", count)
-            return
+# ---------- 启动时自动检测并导入 DATA 数据 ----------
+def _compute_data_state(data_dir: str) -> str:
+    """计算 DATA 目录的状态哈希（基于文件名 + 修改时间 + 文件大小）"""
+    import hashlib
+    if not os.path.isdir(data_dir):
+        return ""
+    items = []
+    for root, dirs, files in os.walk(data_dir):
+        for fname in sorted(files):
+            fpath = os.path.join(root, fname)
+            try:
+                stat = os.stat(fpath)
+                items.append(f"{fpath}|{stat.st_mtime}|{stat.st_size}")
+            except OSError:
+                pass
+    return hashlib.md5("|".join(items).encode()).hexdigest() if items else ""
 
+
+def _auto_import_data():
+    """
+    智能启动检测：
+    1. 如果数据库为空 → 直接导入
+    2. 如果数据库有数据 → 比较 DATA/ 目录状态，若文件有更新则重新导入并训练
+    3. 如果 DATA/ 未变化 → 跳过，使用现有数据
+    """
+    from models import SleepRecord, User
     data_dir = os.path.join(ROOT_DIR, "DATA")
     if not os.path.isdir(data_dir):
         log.info("DATA 目录不存在，跳过自动导入")
         return
 
-    log.info("检测到数据库为空，开始完整预处理管线...")
+    state_file = os.path.join(BASE_DIR, ".data_state.json")
+    current_state = _compute_data_state(data_dir)
+    if not current_state:
+        log.info("DATA 目录为空，跳过自动导入")
+        return
+
+    # 读取之前存储的状态
+    stored_state = ""
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, "r", encoding="utf-8") as f:
+                stored_state = json.loads(f.read()).get("data_hash", "")
+        except Exception:
+            pass
+
+    need_import = False
+    with app.app_context():
+        count = SleepRecord.query.count()
+
+    if count == 0:
+        log.info("数据库为空，需要导入数据")
+        need_import = True
+    elif current_state != stored_state:
+        log.info("检测到 DATA 目录文件有更新（状态哈希变化），需要重新导入并训练")
+        need_import = True
+        # 清空旧数据
+        with app.app_context():
+            try:
+                from models import AnalysisReport
+                AnalysisReport.query.delete()
+                SleepRecord.query.delete()
+                db.session.commit()
+                log.info("已清空旧数据，准备重新导入")
+            except Exception as e:
+                log.warning("清空旧数据时出错：%s", e)
+                db.session.rollback()
+    else:
+        log.info("DATA 目录未变化，数据库已有 %s 条记录，跳过导入", count)
+
+    if not need_import:
+        return
+
+    log.info("开始完整预处理管线...")
     try:
         from pipeline import run_full_pipeline, import_records_to_db
-        # 1. 运行完整预处理管线（线性插值 + 滑动平滑 + 特征工程）
+        # 1. 运行完整预处理管线
         records = run_full_pipeline(data_dir)
         if not records:
             log.warning("预处理管线未产生任何记录")
@@ -194,30 +254,37 @@ def _auto_import_data():
             total = import_records_to_db(records, admin_user.id)
             log.info("✅ DATA 数据导入完成：%s 条记录", total)
 
-        # 3. 执行分析引擎（训练模型 + 生成分析报告入库）
-        from analysis_engine import run_auto_analysis
-        from models import AnalysisReport
-        import json
-        with app.app_context():
-            result = run_auto_analysis()
-            log.info("自动分析完成，最佳模型：%s", result.get("regression", {}).get("best_model", "N/A"))
+        # 2.5 保存数据状态（分析前先保存，防止分析失败导致重复导入）
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump({"data_hash": current_state, "updated_at": str(datetime.now())}, f, ensure_ascii=False)
+        log.info("数据状态已保存")
 
-            # 将分析结果写入 AnalysisReport 表
-            admin_user = User.query.filter_by(role="admin").first()
-            if admin_user and "report" in result:
-                report_data = result["report"]
-                report = AnalysisReport(
-                    user_id=admin_user.id,
-                    predicted_score=result.get("data_summary", {}).get("avg_score", 0),
-                    input_params=json.dumps(result.get("data_summary", {}), ensure_ascii=False),
-                    shap_values=json.dumps(result.get("regression", {}), ensure_ascii=False),
-                    suggestions="\n".join(report_data.get("suggestions", [])),
-                    feature_importance=json.dumps(
-                        result.get("regression", {}).get("rf", {}).get("feature_importance", []), ensure_ascii=False),
-                )
-                db.session.add(report)
-                db.session.commit()
-                log.info("✅ 分析报告已入库")
+        # 3. 执行分析引擎（训练模型 + 生成分析报告入库）
+        try:
+            from analysis_engine import run_auto_analysis
+            from models import AnalysisReport
+            with app.app_context():
+                result = run_auto_analysis()
+                log.info("自动分析完成，最佳模型：%s", result.get("regression", {}).get("best_model", "N/A"))
+
+                admin_user = User.query.filter_by(role="admin").first()
+                if admin_user and "report" in result:
+                    report_data = result["report"]
+                    report = AnalysisReport(
+                        user_id=admin_user.id,
+                        predicted_score=result.get("data_summary", {}).get("avg_score", 0),
+                        input_params=json.dumps(result.get("data_summary", {}), ensure_ascii=False),
+                        shap_values=json.dumps(result.get("regression", {}), ensure_ascii=False),
+                        suggestions="\n".join(report_data.get("suggestions", [])),
+                        feature_importance=json.dumps(
+                            result.get("regression", {}).get("rf", {}).get("feature_importance", []), ensure_ascii=False),
+                    )
+                    db.session.add(report)
+                    db.session.commit()
+                    log.info("✅ 分析报告已入库")
+        except Exception as e:
+            log.warning("自动分析失败（数据已导入，可稍后手动触发分析）：%s", e)
+
     except Exception as e:
         log.warning("自动导入 DATA 数据失败（可手动导入）：%s", e)
 

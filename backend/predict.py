@@ -98,7 +98,7 @@ def predict_score():
 
     # 获取特征重要性（优先从RF/GBRT/XGBoost的feature_importance，其次从线性模型coef）
     fi = {}
-    for model_key in ["rf", "gradient_boosting", "xgboost", "extra_trees"]:
+    for model_key in ["rf", "gradient_boosting", "xgboost"]:
         if model_key in reg_results and "feature_importance" in reg_results[model_key]:
             for i, f in enumerate(FEATURE_COLS):
                 fi[f] = round(float(reg_results[model_key]["feature_importance"][i]), 4)
@@ -165,7 +165,14 @@ def predict_score():
 @predict_bp.route("/feature_analysis", methods=["GET"])
 @login_required
 def feature_analysis():
-    """特征重要性分析与全模型对比"""
+    """特征重要性分析与全模型对比（优先读缓存）"""
+    # 优先尝试从缓存加载
+    from visualize import _load_model_cache, _build_model_cache
+    cache = _load_model_cache()
+    if cache:
+        return jsonify(cache)
+
+    # 无缓存 → 用当前用户数据训练
     user = get_current_user()
     records = SleepRecord.query.filter_by(user_id=user.id).all()
     if len(records) < 5:

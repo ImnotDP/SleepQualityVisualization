@@ -510,12 +510,14 @@ def build_daily_records(processed: Dict[str, pd.DataFrame]) -> List[dict]:
         nightly = nightly.rename(columns={"date_only": "date_join"})
         daily = daily.merge(nightly, on="date_join", how="left")
 
-    # ---- 从 ACTIVITY_MINUTE 聚合步数总量（冗余验证） ----
+    # ---- 从 ACTIVITY_MINUTE 聚合步数总量 + 体动频率（均值） ----
     act_min = processed.get("activity_minute")
     if act_min is not None:
-        am_daily = act_min.groupby("date_only")["minuteSteps"].sum().reset_index()
-        am_daily = am_daily.rename(columns={"date_only": "date_join",
-                                             "minuteSteps": "sumMinuteSteps"})
+        am_daily = act_min.groupby("date_only").agg(
+            sumMinuteSteps=("minuteSteps", "sum"),
+            movement_freq=("movement_freq", "mean"),
+        ).reset_index()
+        am_daily = am_daily.rename(columns={"date_only": "date_join"})
         daily = daily.merge(am_daily, on="date_join", how="left")
 
     # ---- 环境参数（取日均） ----
@@ -583,7 +585,7 @@ def build_daily_records(processed: Dict[str, pd.DataFrame]) -> List[dict]:
             "humidity": round(float(row.get("humidity", 55) or 55), 1),
             "noise_db": round(float(row.get("noise_db", 35) or 35), 1),
             "spo2": round(float(row.get("spo2", 97) or 97), 1),
-            "movement_freq": round(float(row.get("movement_freq", 5) or row.get("movement_freq_per_hour", 5) or 5), 1),
+            "movement_freq": round(float(row.get("movement_freq") or row.get("movement_freq_per_hour") or 5), 1),
             "naps": str(row.get("naps", "[]")),
             "uploaded_at": datetime.utcnow(),
         }
@@ -612,6 +614,7 @@ def _fill_daily_missing(df: pd.DataFrame) -> pd.DataFrame:
         "nightAvgHR": 62, "nightAvgRR": 16,
         "sumMinuteSteps": 8000,
         "temperature": 22, "humidity": 55, "noise_db": 35, "spo2": 97,
+        "movement_freq": 8,
     }
 
     for col in df.columns:

@@ -19,7 +19,6 @@
    - 1.10 KNN Regression (K近邻回归)
    - 1.11 Bayesian Ridge (贝叶斯岭回归)
    - 1.12 AdaBoost Regression (自适应增强)
-   - 1.13 Extra Trees (极端随机树)
 2. [分类算法（预测睡眠阶段）](#分类算法)
 3. [数据预处理方法](#数据预处理)
 4. [模型评估指标](#评估指标)
@@ -265,26 +264,6 @@ $$w_i^{(m+1)} = w_i^{(m)} \cdot \exp(\alpha_m \cdot |y_i - f_m(x_i)|)$$
 
 ---
 
-### 1.13 Extra Trees (极端随机树)
-
-**原理概述：**
-极端随机树（Extremely Randomized Trees）与随机森林类似，但有两个关键区别：
-1. **不使用 Bootstrap 采样：** 每棵树使用全部训练数据
-2. **随机选择分裂点：** 不是寻找最优分裂点，而是随机选择分裂阈值
-
-这种更强的随机性进一步降低了方差，训练速度也更快。
-
-**与随机森林对比：**
-| 特性 | 随机森林 | 极端随机树 |
-|------|---------|-----------|
-| 样本采样 | Bootstrap (有放回) | 全部样本 |
-| 分裂点选择 | 最优分裂 | 随机分裂 |
-| 偏差 | 较低 | 略高 |
-| 方差 | 低 | 更低 |
-| 训练速度 | 较快 | 更快 |
-
----
-
 ## <a id="分类算法"></a>2. 分类算法（预测睡眠阶段）
 
 ### 2.1 Random Forest Classifier (随机森林分类)
@@ -365,7 +344,7 @@ $$z = \frac{x - \mu}{\sigma}$$
 | 数据量较小 (< 100) | Bayesian Ridge / Ridge |
 | 数据存在非线性关系 | Random Forest / SVR (RBF) |
 | 需要特征选择 | Lasso / ElasticNet |
-| 对异常值敏感 | Random Forest / Extra Trees |
+| 对异常值敏感 | Random Forest / Gradient Boosting |
 
 ---
 

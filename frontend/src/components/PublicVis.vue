@@ -5,180 +5,195 @@
       <p class="page-subtitle">基于 DATA 文件夹的睡眠数据可视化分析结果</p>
     </div>
 
-    <el-collapse v-model="activeSections" class="viz-collapse">
-      <!-- ========== 趋势图 ========== -->
-      <el-collapse-item name="trend">
-        <template #title>
-          <div class="section-header">
-            <span class="section-icon">📈</span>
-            <span class="section-label">睡眠趋势总览</span>
-            <span class="section-badge">质量分 · 效率 · 睡眠时长</span>
-          </div>
-        </template>
-        <div class="section-body">
-          <v-chart class="chart chart-tall" :option="trendOption" autoresize />
-        </div>
-      </el-collapse-item>
+    <!-- ========== 趋势图 ========== -->
+    <div class="viz-section" :class="{ 'viz-fullscreen': fsSection === 'trend' }">
+      <div class="section-header" @click="toggleFs('trend')">
+        <span class="section-icon">📈</span>
+        <span class="section-label">睡眠趋势总览</span>
+        <span class="section-badge">质量分 · 效率 · 睡眠时长</span>
+        <span class="section-fs-btn" :title="fsSection==='trend'?'退出全屏':'全屏查看'">{{ fsSection==='trend'?'✕':'⛶'}}</span>
+      </div>
+      <div class="section-body">
+        <v-chart class="chart chart-tall" :option="trendOption" autoresize />
+      </div>
+    </div>
 
-      <!-- ========== 散点图 ========== -->
-      <el-collapse-item name="scatter">
-        <template #title>
-          <div class="section-header">
-            <span class="section-icon">🎯</span>
-            <span class="section-label">指标关联散点图</span>
-            <span class="section-badge">心率 · 步数 vs 睡眠质量</span>
-          </div>
-        </template>
-        <div class="section-body">
-          <el-row :gutter="16">
-            <el-col :xs="24" :sm="12">
-              <div class="chart-card">
-                <div class="chart-card-title">❤️ 心率 vs 睡眠质量</div>
-                <v-chart class="chart" :option="scatterHROption" autoresize />
-              </div>
-            </el-col>
-            <el-col :xs="24" :sm="12">
-              <div class="chart-card">
-                <div class="chart-card-title">👟 步数 vs 睡眠质量</div>
-                <v-chart class="chart" :option="scatterStepsOption" autoresize />
-              </div>
-            </el-col>
-          </el-row>
-        </div>
-      </el-collapse-item>
+    <!-- ========== 散点图 ========== -->
+    <div class="viz-section" :class="{ 'viz-fullscreen': fsSection === 'scatter' }">
+      <div class="section-header" @click="toggleFs('scatter')">
+        <span class="section-icon">🎯</span>
+        <span class="section-label">指标关联散点图</span>
+        <span class="section-badge">心率 · 步数 vs 睡眠质量</span>
+        <span class="section-fs-btn" :title="fsSection==='scatter'?'退出全屏':'全屏查看'">{{ fsSection==='scatter'?'✕':'⛶'}}</span>
+      </div>
+      <div class="section-body">
+        <el-row :gutter="16">
+          <el-col :xs="24" :sm="12">
+            <div class="chart-card">
+              <div class="chart-card-title">❤️ 心率 vs 睡眠质量</div>
+              <v-chart class="chart" :option="scatterHROption" autoresize />
+            </div>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <div class="chart-card">
+              <div class="chart-card-title">👟 步数 vs 睡眠质量</div>
+              <v-chart class="chart" :option="scatterStepsOption" autoresize />
+            </div>
+          </el-col>
+        </el-row>
+      </div>
+    </div>
 
-      <!-- ========== 相关性热力图 ========== -->
-      <el-collapse-item name="correlation">
-        <template #title>
-          <div class="section-header">
-            <span class="section-icon">🔥</span>
-            <span class="section-label">多维相关性热力图</span>
-            <span class="section-badge">全维度特征关联矩阵</span>
-          </div>
-        </template>
-        <div class="section-body">
-          <div class="chart-card">
-            <v-chart class="chart chart-xl" :option="corrOption" autoresize />
-          </div>
+    <!-- ========== 相关性热力图 ========== -->
+    <div class="viz-section" :class="{ 'viz-fullscreen': fsSection === 'correlation' }">
+      <div class="section-header" @click="toggleFs('correlation')">
+        <span class="section-icon">🔥</span>
+        <span class="section-label">多维相关性热力图</span>
+        <span class="section-badge">全维度特征关联矩阵</span>
+        <span class="section-fs-btn" :title="fsSection==='correlation'?'退出全屏':'全屏查看'">{{ fsSection==='correlation'?'✕':'⛶'}}</span>
+      </div>
+      <div class="section-body">
+        <div class="chart-card">
+          <v-chart class="chart chart-xl" :option="corrOption" autoresize />
         </div>
-      </el-collapse-item>
+      </div>
+    </div>
 
-      <!-- ========== 阶段占比 + 睡眠结构 ========== -->
-      <el-collapse-item name="stage">
-        <template #title>
-          <div class="section-header">
-            <span class="section-icon">🍰</span>
-            <span class="section-label">睡眠阶段分析</span>
-            <span class="section-badge">阶段占比 · 睡眠结构</span>
-          </div>
-        </template>
-        <div class="section-body">
-          <el-row :gutter="16">
-            <el-col :xs="24" :sm="12">
-              <div class="chart-card">
-                <div class="chart-card-title">🥧 睡眠阶段占比</div>
-                <v-chart class="chart" :option="pieOption" autoresize />
-              </div>
-            </el-col>
-            <el-col :xs="24" :sm="12">
-              <div class="chart-card" v-if="structOption && structOption.series">
-                <div class="chart-card-title">🏗️ 睡眠结构堆叠图</div>
-                <v-chart class="chart" :option="structOption" autoresize />
-              </div>
-            </el-col>
-          </el-row>
-        </div>
-      </el-collapse-item>
+    <!-- ========== 阶段占比 + 睡眠结构 ========== -->
+    <div class="viz-section" :class="{ 'viz-fullscreen': fsSection === 'stage' }">
+      <div class="section-header" @click="toggleFs('stage')">
+        <span class="section-icon">🍰</span>
+        <span class="section-label">睡眠阶段分析</span>
+        <span class="section-badge">阶段占比 · 睡眠结构</span>
+        <span class="section-fs-btn" :title="fsSection==='stage'?'退出全屏':'全屏查看'">{{ fsSection==='stage'?'✕':'⛶'}}</span>
+      </div>
+      <div class="section-body">
+        <el-row :gutter="16">
+          <el-col :xs="24" :sm="12">
+            <div class="chart-card">
+              <div class="chart-card-title">🥧 睡眠阶段占比</div>
+              <v-chart class="chart" :option="pieOption" autoresize />
+            </div>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <div class="chart-card" v-if="structOption && structOption.series">
+              <div class="chart-card-title">🏗️ 睡眠结构堆叠图</div>
+              <v-chart class="chart" :option="structOption" autoresize />
+            </div>
+          </el-col>
+        </el-row>
+      </div>
+    </div>
 
-      <!-- ========== 环境参数 ========== -->
-      <el-collapse-item name="environment">
-        <template #title>
-          <div class="section-header">
-            <span class="section-icon">🌡️</span>
-            <span class="section-label">环境参数影响分析</span>
-            <span class="section-badge">温度 · 湿度 · 噪声 · 血氧 · 体动</span>
-          </div>
-        </template>
-        <div class="section-body">
-          <el-row :gutter="16">
-            <el-col :xs="24" :sm="12" :md="6">
-              <div class="chart-card">
-                <div class="chart-card-title">🌡️ 温度 vs 质量</div>
-                <v-chart class="chart chart-sm" :option="envTempOption" autoresize />
-              </div>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-              <div class="chart-card">
-                <div class="chart-card-title">💧 湿度 vs 质量</div>
-                <v-chart class="chart chart-sm" :option="envHumidOption" autoresize />
-              </div>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-              <div class="chart-card">
-                <div class="chart-card-title">🔊 噪声 vs 质量</div>
-                <v-chart class="chart chart-sm" :option="envNoiseOption" autoresize />
-              </div>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="6">
-              <div class="chart-card">
-                <div class="chart-card-title">🫁 血氧 vs 质量</div>
-                <v-chart class="chart chart-sm" :option="envSpo2Option" autoresize />
-              </div>
-            </el-col>
-          </el-row>
-          <div class="chart-card" style="margin-top:16px">
-            <div class="chart-card-title">📈 环境参数日趋势（温度 / 湿度 / 噪声 / 血氧 / 体动）</div>
-            <v-chart class="chart chart-tall" :option="envTrendOption" autoresize />
-          </div>
+    <!-- ========== 环境参数 ========== -->
+    <div class="viz-section" :class="{ 'viz-fullscreen': fsSection === 'environment' }">
+      <div class="section-header" @click="toggleFs('environment')">
+        <span class="section-icon">🌡️</span>
+        <span class="section-label">环境参数影响分析</span>
+        <span class="section-badge">温度 · 湿度 · 噪声 · 血氧 · 体动</span>
+        <span class="section-fs-btn" :title="fsSection==='environment'?'退出全屏':'全屏查看'">{{ fsSection==='environment'?'✕':'⛶'}}</span>
+      </div>
+      <div class="section-body">
+        <el-row :gutter="16">
+          <el-col :xs="24" :sm="12" :md="6">
+            <div class="chart-card">
+              <div class="chart-card-title">🌡️ 温度 vs 质量</div>
+              <v-chart class="chart chart-sm" :option="envTempOption" autoresize />
+            </div>
+          </el-col>
+          <el-col :xs="24" :sm="12" :md="6">
+            <div class="chart-card">
+              <div class="chart-card-title">💧 湿度 vs 质量</div>
+              <v-chart class="chart chart-sm" :option="envHumidOption" autoresize />
+            </div>
+          </el-col>
+          <el-col :xs="24" :sm="12" :md="6">
+            <div class="chart-card">
+              <div class="chart-card-title">🔊 噪声 vs 质量</div>
+              <v-chart class="chart chart-sm" :option="envNoiseOption" autoresize />
+            </div>
+          </el-col>
+          <el-col :xs="24" :sm="12" :md="6">
+            <div class="chart-card">
+              <div class="chart-card-title">🫁 血氧 vs 质量</div>
+              <v-chart class="chart chart-sm" :option="envSpo2Option" autoresize />
+            </div>
+          </el-col>
+        </el-row>
+        <div class="chart-card" style="margin-top:16px">
+          <div class="chart-card-title">📈 环境参数日趋势（温度 / 湿度 / 噪声 / 血氧 / 体动）</div>
+          <v-chart class="chart chart-tall" :option="envTrendOption" autoresize />
         </div>
-      </el-collapse-item>
-    </el-collapse>
+      </div>
+    </div>
+
+    <!-- ========== 全模型对比 ========== -->
+    <div class="viz-section" :class="{ 'viz-fullscreen': fsSection === 'models' }">
+      <div class="section-header" @click="toggleFs('models')">
+        <span class="section-icon">🤖</span>
+        <span class="section-label">全模型算法对比</span>
+        <span class="section-badge">12种回归算法 · R²/MAE/RMSE</span>
+        <span class="section-fs-btn" :title="fsSection==='models'?'退出全屏':'全屏查看'">{{ fsSection==='models'?'✕':'⛶'}}</span>
+      </div>
+      <div class="section-body">
+        <el-row :gutter="16">
+          <el-col :xs="24" :lg="14">
+            <div class="chart-card">
+              <div class="chart-card-title">📊 各算法 R² 决定系数对比（越高越好）</div>
+              <v-chart class="chart chart-tall" :option="modelR2Option" autoresize />
+            </div>
+          </el-col>
+          <el-col :xs="24" :lg="10">
+            <div class="chart-card">
+              <div class="chart-card-title">📋 全模型指标明细</div>
+              <el-table :data="modelTableData" size="small" stripe max-height="420" style="margin-top:8px">
+                <el-table-column prop="name" label="算法模型" width="180" />
+                <el-table-column prop="r2" label="R²" sortable width="70">
+                  <template #default="{row}">
+                    <span :style="{color:row.r2>0.6?'#67c23a':row.r2>0.3?'#409eff':'#e6a23c',fontWeight:'bold'}">{{ row.r2 }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="mae" label="MAE" sortable width="70" />
+                <el-table-column prop="rmse" label="RMSE" sortable width="80" />
+                <el-table-column label="评级" width="60">
+                  <template #default="{row}">
+                    <el-tag :type="row.r2>0.6?'success':row.r2>0.3?'primary':'warning'" size="small">{{ row.r2>0.6?'优':row.r2>0.3?'中':'弱' }}</el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </el-col>
+        </el-row>
+        <div class="chart-card" style="margin-top:8px">
+          <div class="chart-card-title">📈 各算法 MAE / RMSE 误差对比（越低越好）</div>
+          <v-chart class="chart chart-tall" :option="modelErrorOption" autoresize />
+        </div>
+      </div>
+    </div>
 
     <el-empty v-if="!hasData && !loading" description="暂无数据" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, BarChart, PieChart, ScatterChart, HeatmapChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent, VisualMapComponent } from 'echarts/components'
-import { getPublicTrend, getPublicStagePie, getPublicCorrelation, getPublicScatter, getPublicSleepStructure } from '../api/sleep'
+import { getPublicTrend, getPublicStagePie, getPublicCorrelation, getPublicScatter, getPublicSleepStructure, getPublicModelComparison } from '../api/sleep'
 
 use([CanvasRenderer, LineChart, BarChart, PieChart, ScatterChart, HeatmapChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, VisualMapComponent])
 
 const loading = ref(true)
 const hasData = ref(false)
 
-// 响应式：大屏全部展开，小屏折叠
-const ALL_SECTIONS = ['trend', 'scatter', 'correlation', 'stage', 'environment']
-const activeSections = ref([...ALL_SECTIONS])
-const isMobile = ref(false)
-
-function checkMobile() {
-  isMobile.value = window.innerWidth < 768
-  if (isMobile.value) {
-    activeSections.value = ['trend']
-  } else {
-    activeSections.value = [...ALL_SECTIONS]
-  }
+// 全屏切换
+const fsSection = ref(null)
+function toggleFs(name) {
+  fsSection.value = fsSection.value === name ? null : name
 }
-
-let resizeTimer = null
-function onResize() {
-  clearTimeout(resizeTimer)
-  resizeTimer = setTimeout(checkMobile, 200)
-}
-
-onMounted(() => {
-  checkMobile()
-  window.addEventListener('resize', onResize)
-})
-onUnmounted(() => {
-  window.removeEventListener('resize', onResize)
-})
 
 const trendOption = ref({})
 const scatterHROption = ref({})
@@ -191,6 +206,11 @@ const envHumidOption = ref({})
 const envNoiseOption = ref({})
 const envSpo2Option = ref({})
 const envTrendOption = ref({})
+
+// 模型对比
+const modelR2Option = ref({})
+const modelErrorOption = ref({})
+const modelTableData = ref([])
 
 onMounted(async () => {
   loading.value = true
@@ -316,107 +336,112 @@ onMounted(async () => {
         }
       }
     } catch (_) { /* 无环境数据时静默跳过 */ }
+
+    // 全模型对比数据
+    try {
+      const modelRes = await getPublicModelComparison()
+      const mc = modelRes.data?.model_comparison
+      if (mc) {
+        const entries = Object.entries(mc)
+          .filter(([, v]) => v && typeof v.r2 === 'number')
+          .map(([key, val]) => ({
+            key,
+            name: val.name || key,
+            r2: val.r2 ?? 0,
+            mae: val.mae ?? 0,
+            rmse: val.rmse ?? 0,
+          }))
+          .sort((a, b) => (b.r2 || 0) - (a.r2 || 0))
+        modelTableData.value = entries
+
+        const names = entries.map(e => e.name)
+        const r2vals = entries.map(e => e.r2)
+        const colors = r2vals.map(v => v > 0.6 ? '#67c23a' : v > 0.3 ? '#409eff' : '#e6a23c')
+        modelR2Option.value = {
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+          grid: { left: '3%', right: '8%', top: '5%', bottom: '8%', containLabel: true },
+          xAxis: { type: 'value', name: 'R²', max: 1, axisLabel: { color: '#889' } },
+          yAxis: { type: 'category', data: names.reverse(), axisLabel: { color: '#ccc', fontSize: 11 }, inverse: true },
+          series: [{
+            type: 'bar', data: r2vals.reverse().map((v, i) => ({
+              value: v,
+              itemStyle: { color: colors.reverse()[i], borderRadius: [0, 4, 4, 0] }
+            })),
+            label: { show: true, position: 'right', color: '#aaa', fontSize: 10, formatter: '{c}' },
+            barMaxWidth: 28,
+          }],
+        }
+
+        const maeVals = entries.map(e => e.mae)
+        const rmseVals = entries.map(e => e.rmse)
+        modelErrorOption.value = {
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+          legend: { data: ['MAE', 'RMSE'], textStyle: { color: '#aaa' }, top: 0 },
+          grid: { left: '3%', right: '5%', top: '12%', bottom: '8%', containLabel: true },
+          xAxis: { type: 'category', data: names, axisLabel: { color: '#ccc', fontSize: 10, rotate: 30 } },
+          yAxis: { type: 'value', axisLabel: { color: '#889' } },
+          series: [
+            { name: 'MAE', type: 'bar', data: maeVals, itemStyle: { color: '#409eff', borderRadius: [4, 4, 0, 0] }, barGap: '10%', barMaxWidth: 20 },
+            { name: 'RMSE', type: 'bar', data: rmseVals, itemStyle: { color: '#e6a23c', borderRadius: [4, 4, 0, 0] }, barMaxWidth: 20 },
+          ],
+        }
+      }
+    } catch (_) { /* 模型对比加载失败静默跳过 */ }
   } catch (e) { console.error(e) }
   finally { loading.value = false }
 })
 </script>
 
 <style scoped>
-/* ====== 页面容器 ====== */
 .viz-page { padding: 4px; max-width: 1400px; margin: 0 auto; }
-
-/* ====== 页面标题 ====== */
-.page-hero {
-  text-align: center; padding: 16px 0 24px;
-  background: linear-gradient(180deg, rgba(26,42,58,0.4) 0%, transparent 100%);
-  border-radius: 12px; margin-bottom: 8px;
-}
+.page-hero { text-align: center; padding: 16px 0 24px; background: linear-gradient(180deg, rgba(26,42,58,0.4) 0%, transparent 100%); border-radius: 12px; margin-bottom: 8px; }
 .page-title { font-size: 1.8rem; font-weight: 700; color: #ffd04b; margin: 0 0 6px; letter-spacing: 1px; }
 .page-subtitle { color: #7a8a9a; font-size: 0.9rem; margin: 0; }
 
-/* ====== Collapse 美化 ====== */
-.viz-collapse {
-  --el-collapse-header-bg-color: #1a2a3a;
-  --el-collapse-content-bg-color: #0f1923;
-  border: none;
-}
-.viz-collapse :deep(.el-collapse-item) {
-  margin-bottom: 10px;
-  border: 1px solid #2a3a4a;
-  border-radius: 12px;
-  overflow: hidden;
-  background: #1a2a3a;
-  transition: all 0.3s ease;
-}
-.viz-collapse :deep(.el-collapse-item:hover) {
-  border-color: #3a5a7a;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-}
-.viz-collapse :deep(.el-collapse-item__header) {
-  height: auto !important;
-  padding: 14px 20px;
-  background: linear-gradient(135deg, #1e3044 0%, #1a2a3a 100%);
-  border-bottom: 1px solid #2a3a4a;
-  font-size: 15px;
-  font-weight: 600;
-  color: #e0e0e0;
-  line-height: 1.4;
-}
-.viz-collapse :deep(.el-collapse-item__wrap) {
-  background: #0f1923;
-  border: none;
-}
-.viz-collapse :deep(.el-collapse-item__content) {
-  padding: 20px;
-}
-
-/* 桌面端隐藏折叠箭头 */
-.viz-collapse :deep(.el-collapse-item__arrow) { display: none; }
-
-/* ====== 区块标题 ====== */
-.section-header {
+/* ====== 可视化区块（替代 collapse） ====== */
+.viz-section { margin-bottom: 10px; border: 1px solid #2a3a4a; border-radius: 12px; overflow: hidden; background: #1a2a3a; transition: all 0.3s ease; }
+.viz-section:hover { border-color: #3a5a7a; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+.viz-section .section-header {
   display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 14px 20px; background: linear-gradient(135deg, #1e3044 0%, #1a2a3a 100%);
+  border-bottom: 1px solid #2a3a4a; font-size: 15px; font-weight: 600;
+  color: #e0e0e0; line-height: 1.4; cursor: default; user-select: none;
 }
-.section-icon { font-size: 1.3rem; }
+.section-icon { font-size: 1.3rem; flex: 0 0 auto; }
 .section-label { flex: 0 0 auto; }
-.section-badge {
-  margin-left: auto;
-  font-size: 0.75rem; font-weight: 400; color: #5a7a9a;
-  background: rgba(255,255,255,0.04); padding: 2px 10px; border-radius: 20px;
+.section-badge { margin-left: auto; font-size: 0.75rem; font-weight: 400; color: #5a7a9a; background: rgba(255,255,255,0.04); padding: 2px 10px; border-radius: 20px; }
+.section-fs-btn {
+  cursor: pointer; font-size: 1.1rem; color: #889; padding: 4px 8px; border-radius: 6px;
+  transition: all 0.2s; margin-left: 8px; flex: 0 0 auto;
 }
+.section-fs-btn:hover { color: #ffd04b; background: rgba(255,208,75,0.1); }
+.section-body { padding: 20px; }
 
-/* ====== 区块内容 ====== */
-.section-body { padding: 4px 0; }
-
-/* ====== 单个图表卡片 ====== */
-.chart-card {
-  background: #162230;
-  border: 1px solid #243444;
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 8px;
-  transition: border-color 0.2s;
+/* ====== 全屏模式 ====== */
+.viz-fullscreen {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;
+  margin: 0; border-radius: 0; border: none; max-width: none;
+  background: #0f1923; display: flex; flex-direction: column;
 }
+.viz-fullscreen .section-header { border-bottom-color: #3a5a7a; }
+.viz-fullscreen .section-body { flex: 1; overflow-y: auto; padding: 20px; }
+.viz-fullscreen .chart { height: calc(100vh - 220px) !important; min-height: 400px; }
+.viz-fullscreen .chart-tall { height: calc(100vh - 200px) !important; min-height: 450px; }
+.viz-fullscreen .chart-xl { height: calc(100vh - 180px) !important; min-height: 500px; }
+.viz-fullscreen .chart-sm { height: 350px !important; }
+
+.chart-card { background: #162230; border: 1px solid #243444; border-radius: 10px; padding: 12px; margin-bottom: 8px; transition: border-color 0.2s; }
 .chart-card:hover { border-color: #3a5a7a; }
-.chart-card-title {
-  color: #8899aa; font-size: 0.8rem; font-weight: 600;
-  margin-bottom: 8px; padding-left: 4px; letter-spacing: 0.5px;
-}
+.chart-card-title { color: #8899aa; font-size: 0.8rem; font-weight: 600; margin-bottom: 8px; padding-left: 4px; letter-spacing: 0.5px; }
 
-/* ====== 图表尺寸变体 ====== */
 .chart { width: 100%; height: 380px; }
 .chart-sm { height: 280px; }
 .chart-tall { height: 450px; }
 .chart-xl { height: 550px; }
 
-/* ====== 移动端适配 ====== */
 @media (max-width: 767px) {
-  .viz-collapse :deep(.el-collapse-item__arrow) { display: block; }
   .section-badge { display: none; }
-  .chart { height: 300px; }
-  .chart-sm { height: 240px; }
-  .chart-tall { height: 340px; }
-  .chart-xl { height: 400px; }
+  .chart { height: 300px; } .chart-sm { height: 240px; } .chart-tall { height: 340px; } .chart-xl { height: 400px; }
   .page-title { font-size: 1.3rem; }
 }
 </style>

@@ -1,10 +1,15 @@
 <template>
   <div class="page">
     <h2 style="margin-bottom:8px">🏠 睡眠质量可视化分析</h2>
-    <el-alert type="info" :closable="false" show-icon style="margin-bottom:16px">
+    <el-alert v-if="!isLoggedIn" type="info" :closable="false" show-icon style="margin-bottom:16px">
       <template #title>
         当前为<strong>公开浏览模式</strong>（未登录）— 展示 DATA 文件夹的示例数据。
         如需<strong>上传个人手环数据</strong>获得专属分析，请点击右上角<strong>「注册」</strong>账号后登录。
+      </template>
+    </el-alert>
+    <el-alert v-else type="success" :closable="false" show-icon style="margin-bottom:16px">
+      <template #title>
+        欢迎回来，<strong>{{ currentUser?.username }}</strong>！您已登录，可上传个人数据获得专属分析。
       </template>
     </el-alert>
 
@@ -66,7 +71,7 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, BarChart, PieChart, ScatterChart, HeatmapChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent, VisualMapComponent } from 'echarts/components'
-import { getPublicSummary, getPublicTrend, getPublicStagePie, getPublicCorrelation, getPublicScatter } from '../api/sleep'
+import { getPublicSummary, getPublicTrend, getPublicStagePie, getPublicCorrelation, getPublicScatter, getCurrentUser } from '../api/sleep'
 import { ElMessage } from 'element-plus'
 
 use([CanvasRenderer, LineChart, BarChart, PieChart, ScatterChart, HeatmapChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, VisualMapComponent])
@@ -74,6 +79,8 @@ use([CanvasRenderer, LineChart, BarChart, PieChart, ScatterChart, HeatmapChart, 
 const router = useRouter()
 const loading = ref(true)
 const hasData = ref(false)
+const isLoggedIn = ref(false)
+const currentUser = ref(null)
 const summary = ref(null)
 const trendReady = ref(false)
 const scatterReady = ref(false)
@@ -108,6 +115,17 @@ function goUpload() {
 
 onMounted(async () => {
   loading.value = true
+
+  // 检查登录状态（session cookie 为 HttpOnly，JS 无法直接读取，需通过 API 判断）
+  try {
+    const res = await getCurrentUser()
+    const user = res.data?.user || res.data
+    if (user && user.username) {
+      isLoggedIn.value = true
+      currentUser.value = user
+    }
+  } catch (_) { isLoggedIn.value = false }
+
   try {
     // 并行加载所有公开数据
     const [summaryRes, trendRes, pieRes, corrRes, scatterRes] = await Promise.allSettled([

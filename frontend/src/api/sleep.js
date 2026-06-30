@@ -111,6 +111,9 @@ export function getPublicScatter() {
 export function getPublicSleepStructure() {
   return api.get('/vis/public/sleep_structure')
 }
+export function getPublicModelComparison() {
+  return api.get('/vis/public/model_comparison')
+}
 
 // ========== 预测 ==========
 export function predictScore(params) {

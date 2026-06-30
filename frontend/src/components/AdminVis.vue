@@ -20,11 +20,11 @@ import { ref, onMounted } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart, BarChart, PieChart } from 'echarts/charts'
+import { LineChart, BarChart, PieChart, HeatmapChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent, VisualMapComponent } from 'echarts/components'
 import { getGlobalCorrelation, getGlobalDistribution } from '../api/sleep'
 
-use([CanvasRenderer,LineChart,BarChart,PieChart,TitleComponent,TooltipComponent,LegendComponent,GridComponent,VisualMapComponent])
+use([CanvasRenderer,LineChart,BarChart,PieChart,HeatmapChart,TitleComponent,TooltipComponent,LegendComponent,GridComponent,VisualMapComponent])
 
 const activeTab = ref('corr')
 const corrOption = ref({})

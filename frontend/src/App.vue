@@ -47,7 +47,7 @@
 
     <!-- 主内容区 -->
     <el-main class="app-main">
-      <router-view @login-success="onLoginSuccess" />
+      <router-view @login-success="onLoginSuccess" :key="loginStamp" />
     </el-main>
   </div>
 </template>
@@ -60,6 +60,7 @@ import { logout, getCurrentUser, getSystemStatus } from './api/sleep'
 const route = useRoute()
 const router = useRouter()
 const currentUser = ref(null)
+const loginStamp = ref(0)
 const dbWarning = ref('')
 
 const isLoggedIn = computed(() => !!currentUser.value)
@@ -88,11 +89,13 @@ async function checkLogin() {
 async function doLogout() {
   await logout()
   currentUser.value = null
+  loginStamp.value++
   router.push('/home')
 }
 
 async function onLoginSuccess() {
   await checkLogin()
+  loginStamp.value++
   const u = currentUser.value
   router.push(u?.role === 'admin' ? '/admin/home' : '/home')
 }

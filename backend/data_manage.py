@@ -174,7 +174,8 @@ def _quick_preprocess_all() -> int:
         if not os.path.isdir(folder_path):
             continue
         for fname in os.listdir(folder_path):
-            if not fname.lower().endswith(".csv"):
+            ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+            if ext not in ("csv", "parquet", "txt"):
                 continue
             fpath = os.path.join(folder_path, fname)
             try:
@@ -373,7 +374,8 @@ def _extract_and_process_zip(zip_path: str, user_id: int) -> dict:
 
         for root, dirs, files in os.walk(extract_dir):
             for fname in files:
-                if not fname.lower().endswith(".csv"):
+                ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+                if ext not in ("csv", "parquet", "txt"):
                     continue
                 fpath = os.path.join(root, fname)
                 try:

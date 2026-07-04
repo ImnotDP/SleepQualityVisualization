@@ -23,12 +23,39 @@ def dashboard():
     new_records_today = SleepRecord.query.filter(
         SleepRecord.uploaded_at >= f"{today} 00:00:00").count()
 
-    # 平均睡眠质量
+    # 全量统计
     records = SleepRecord.query.all()
+    n = len(records)
+
     avg_quality = 0
-    if records:
+    avg_steps = 0
+    avg_sleep_min = 0
+    avg_hr = 0
+    avg_efficiency = 0
+    avg_deep = 0
+    avg_rem = 0
+
+    if n > 0:
         scores = [r.sleepQualityScore for r in records if r.sleepQualityScore]
         avg_quality = round(sum(scores) / len(scores), 2) if scores else 0
+
+        steps = [r.daySteps for r in records if r.daySteps]
+        avg_steps = round(sum(steps) / len(steps), 0) if steps else 0
+
+        sleep_mins = [r.totalSleepMinutes for r in records if r.totalSleepMinutes]
+        avg_sleep_min = round(sum(sleep_mins) / len(sleep_mins), 1) if sleep_mins else 0
+
+        hrs = [r.avgHeartRate for r in records if r.avgHeartRate]
+        avg_hr = round(sum(hrs) / len(hrs), 1) if hrs else 0
+
+        effs = [r.sleepEfficiency for r in records if r.sleepEfficiency]
+        avg_efficiency = round(sum(effs) / len(effs) * 100, 1) if effs else 0
+
+        deeps = [r.deepSleepTime for r in records if r.deepSleepTime]
+        avg_deep = round(sum(deeps) / len(deeps), 1) if deeps else 0
+
+        rems = [r.REMTime for r in records if r.REMTime]
+        avg_rem = round(sum(rems) / len(rems), 1) if rems else 0
 
     return jsonify({
         "stats": {
@@ -38,6 +65,12 @@ def dashboard():
             "new_users_today": new_users_today,
             "new_records_today": new_records_today,
             "avg_quality_all_users": avg_quality,
+            "avg_steps": int(avg_steps),
+            "avg_sleep_hours": round(avg_sleep_min / 60, 1),
+            "avg_heart_rate": avg_hr,
+            "avg_efficiency_pct": avg_efficiency,
+            "avg_deep_min": avg_deep,
+            "avg_rem_min": avg_rem,
         },
     })
 
@@ -60,6 +93,17 @@ def list_users():
         d = u.to_dict()
         d["record_count"] = SleepRecord.query.filter_by(user_id=u.id).count()
         d["report_count"] = AnalysisReport.query.filter_by(user_id=u.id).count()
+        # 用户平均质量分
+        user_records = SleepRecord.query.filter_by(user_id=u.id).all()
+        if user_records:
+            scores = [r.sleepQualityScore for r in user_records if r.sleepQualityScore]
+            d["avg_quality"] = round(sum(scores) / len(scores), 2) if scores else 0
+            last_rec = SleepRecord.query.filter_by(user_id=u.id).order_by(
+                SleepRecord.record_date.desc()).first()
+            d["last_record_date"] = last_rec.record_date if last_rec else "无"
+        else:
+            d["avg_quality"] = 0
+            d["last_record_date"] = "无"
         user_list.append(d)
 
     return jsonify({
@@ -95,28 +139,34 @@ def delete_user(user_id):
 @admin_bp.route("/group_quality_distribution", methods=["GET"])
 @admin_required
 def group_quality_distribution():
-    """全体用户睡眠质量分分布"""
+    """全体用户睡眠质量分分布（精细分箱，确保分布可视化）"""
     records = SleepRecord.query.all()
     scores = [r.sleepQualityScore for r in records if r.sleepQualityScore]
 
-    # 分段统计
-    bins = {"0-20": 0, "20-40": 0, "40-60": 0, "60-80": 0, "80-100": 0}
+    # 精细化分箱：以0.5为步长，从1到10共18个区间，确保分布可见
+    bins = {}
+    step = 0.5
+    low = 1.0
+    while low < 10:
+        high = round(low + step, 1)
+        label = f"{low}-{high}"
+        bins[label] = 0
+        low = high
+
     for s in scores:
-        if s < 20:
-            bins["0-20"] += 1
-        elif s < 40:
-            bins["20-40"] += 1
-        elif s < 60:
-            bins["40-60"] += 1
-        elif s < 80:
-            bins["60-80"] += 1
-        else:
-            bins["80-100"] += 1
+        idx = int((s - 1) / step)
+        idx = max(0, min(idx, len(bins) - 1))
+        bin_keys = list(bins.keys())
+        bins[bin_keys[idx]] += 1
+
+    dist_list = [{"range": k, "count": v} for k, v in bins.items()]
 
     return jsonify({
-        "distribution": [{"range": k, "count": v} for k, v in bins.items()],
+        "distribution": dist_list,
         "total_records": len(scores),
         "avg_quality": round(sum(scores) / len(scores), 2) if scores else 0,
+        "min_quality": round(min(scores), 1) if scores else 0,
+        "max_quality": round(max(scores), 1) if scores else 0,
     })
 
 
@@ -153,13 +203,20 @@ def group_influence_ranking():
 
     features = [
         "totalSleepMinutes", "deepSleepTime", "shallowSleepTime", "REMTime",
-        "wakeTime", "sleepEfficiency", "daySteps", "dayCalories", "avgHeartRate",
+        "wakeTime", "sleepEfficiency", "deepSleepRatio", "REMRatio",
+        "daySteps", "dayCalories", "avgHeartRate", "nightAvgHR",
+        "temperature", "humidity", "noise_db", "spo2", "movement_freq",
     ]
     labels = {
         "totalSleepMinutes": "总睡眠时长", "deepSleepTime": "深睡时长",
         "shallowSleepTime": "浅睡时长", "REMTime": "REM时长",
         "wakeTime": "清醒时长", "sleepEfficiency": "睡眠效率",
-        "daySteps": "日步数", "dayCalories": "日卡路里", "avgHeartRate": "平均心率",
+        "deepSleepRatio": "深睡比例", "REMRatio": "REM比例",
+        "daySteps": "日步数", "dayCalories": "日卡路里",
+        "avgHeartRate": "平均心率", "nightAvgHR": "夜间心率",
+        "temperature": "环境温度", "humidity": "环境湿度",
+        "noise_db": "环境噪声", "spo2": "血氧饱和度",
+        "movement_freq": "体动频率",
     }
 
     quality = [r.sleepQualityScore or 0 for r in records]

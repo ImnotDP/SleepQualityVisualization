@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+import atexit
+import secrets
 import logging
 from datetime import datetime
 
@@ -35,7 +37,9 @@ log = logging.getLogger(__name__)
 
 # ---------- Flask 应用工厂 ----------
 app = Flask(__name__)
-app.config["SECRET_KEY"] = _cfg.get("SECRET_KEY", "default-secret-key")
+# 每次启动生成随机 SECRET_KEY，服务重启后所有旧会话自动失效
+_base_secret = _cfg.get("SECRET_KEY", "default-secret-key")
+app.config["SECRET_KEY"] = _base_secret + "_" + secrets.token_hex(16)
 
 # 数据库 URI：优先 MySQL，不可用时自动回退 SQLite
 _mysql_uri = (
@@ -183,10 +187,8 @@ def _compute_data_state(data_dir: str) -> str:
 
 def _auto_import_data():
     """
-    智能启动检测：
-    1. 如果数据库为空 → 直接导入
-    2. 如果数据库有数据 → 比较 DATA/ 目录状态，若文件有更新则重新导入并训练
-    3. 如果 DATA/ 未变化 → 跳过，使用现有数据
+    每次启动时完整处理：清空旧数据 → 重新导入 → 重新分析
+    不做任何缓存检测，保证每次启动都是全新状态。
     """
     from models import SleepRecord, User
     data_dir = os.path.join(ROOT_DIR, "DATA")
@@ -194,47 +196,22 @@ def _auto_import_data():
         log.info("DATA 目录不存在，跳过自动导入")
         return
 
-    state_file = os.path.join(BASE_DIR, ".data_state.json")
     current_state = _compute_data_state(data_dir)
     if not current_state:
         log.info("DATA 目录为空，跳过自动导入")
         return
 
-    # 读取之前存储的状态
-    stored_state = ""
-    if os.path.exists(state_file):
-        try:
-            with open(state_file, "r", encoding="utf-8") as f:
-                stored_state = json.loads(f.read()).get("data_hash", "")
-        except Exception:
-            pass
-
-    need_import = False
+    # 清空旧数据（每次启动全新导入）
     with app.app_context():
-        count = SleepRecord.query.count()
-
-    if count == 0:
-        log.info("数据库为空，需要导入数据")
-        need_import = True
-    elif current_state != stored_state:
-        log.info("检测到 DATA 目录文件有更新（状态哈希变化），需要重新导入并训练")
-        need_import = True
-        # 清空旧数据
-        with app.app_context():
-            try:
-                from models import AnalysisReport
-                AnalysisReport.query.delete()
-                SleepRecord.query.delete()
-                db.session.commit()
-                log.info("已清空旧数据，准备重新导入")
-            except Exception as e:
-                log.warning("清空旧数据时出错：%s", e)
-                db.session.rollback()
-    else:
-        log.info("DATA 目录未变化，数据库已有 %s 条记录，跳过导入", count)
-
-    if not need_import:
-        return
+        try:
+            from models import AnalysisReport
+            AnalysisReport.query.delete()
+            SleepRecord.query.delete()
+            db.session.commit()
+            log.info("已清空旧数据，准备全新导入")
+        except Exception as e:
+            log.warning("清空旧数据时出错：%s", e)
+            db.session.rollback()
 
     log.info("开始完整预处理管线...")
     try:
@@ -253,11 +230,6 @@ def _auto_import_data():
                 return
             total = import_records_to_db(records, admin_user.id)
             log.info("✅ DATA 数据导入完成：%s 条记录", total)
-
-        # 2.5 保存数据状态（分析前先保存，防止分析失败导致重复导入）
-        with open(state_file, "w", encoding="utf-8") as f:
-            json.dump({"data_hash": current_state, "updated_at": str(datetime.now())}, f, ensure_ascii=False)
-        log.info("数据状态已保存")
 
         # 3. 执行分析引擎（训练模型 + 生成分析报告入库）
         try:
@@ -289,6 +261,24 @@ def _auto_import_data():
         log.warning("自动导入 DATA 数据失败（可手动导入）：%s", e)
 
 
+# ---------- 关闭时清理所有缓存文件 ----------
+def _cleanup_on_exit():
+    """服务关闭时删除所有缓存/状态文件"""
+    files_to_clean = [
+        os.path.join(BASE_DIR, ".data_state.json"),
+        os.path.join(BASE_DIR, ".model_cache.json"),
+    ]
+    for fp in files_to_clean:
+        if os.path.exists(fp):
+            try:
+                os.remove(fp)
+                log.info("已清理缓存文件：%s", os.path.basename(fp))
+            except Exception as e:
+                log.warning("清理缓存文件失败 %s：%s", fp, e)
+
+atexit.register(_cleanup_on_exit)
+
+
 # ---------- 启动 ----------
 if __name__ == "__main__":
     try:
@@ -297,7 +287,7 @@ if __name__ == "__main__":
         log.error("数据库初始化失败，后端无法启动：%s", e)
         sys.exit(1)
 
-    # 自动导入 DATA 数据（仅当数据库为空时）
+    # 每次启动完整导入 DATA 数据并重新分析
     _auto_import_data()
 
     host = _cfg.get("FLASK_HOST", "0.0.0.0")

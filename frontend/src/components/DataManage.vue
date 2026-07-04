@@ -4,12 +4,20 @@
     <!-- 上传区域 -->
     <el-card class="card-dark" style="margin-bottom:20px">
       <template #header>📤 上传睡眠数据</template>
+      <div style="margin-bottom:12px;padding:8px 14px;background:#1e3044;border-radius:8px;color:#aabbcc;font-size:0.8rem;line-height:1.6">
+        📋 <b>支持的上传格式：</b><br/>
+        • <b>CSV</b> (.csv) — 逗号分隔值文件，最常见的数据导出格式<br/>
+        • <b>Parquet</b> (.parquet) — 列式存储格式，读写速度快，适合大数据<br/>
+        • <b>ZIP</b> (.zip) — 压缩包，可包含多个 CSV/Parquet/TXT 文件<br/>
+        • <b>TXT</b> (.txt) — 文本文件，支持逗号、制表符等分隔符
+      </div>
       <el-tabs v-model="uploadMode" type="border-card">
-        <!-- 单个 CSV 上传 -->
-        <el-tab-pane label="📄 单个CSV" name="single">
-          <el-upload drag :auto-upload="false" :on-change="onFileChange" :limit="1" accept=".csv">
+        <!-- 单个文件上传（CSV/Parquet/TXT） -->
+        <el-tab-pane label="📄 单文件上传" name="single">
+          <div style="margin-bottom:8px;color:#889;font-size:0.8rem">支持格式：CSV (.csv)、Parquet (.parquet)、TXT (.txt)</div>
+          <el-upload drag :auto-upload="false" :on-change="onFileChange" :limit="1" accept=".csv,.parquet,.txt">
             <el-icon style="font-size:48px"><UploadFilled /></el-icon>
-            <div>拖拽或点击上传 CSV 文件</div>
+            <div>拖拽或点击上传文件（CSV / Parquet / TXT）</div>
           </el-upload>
           <el-button type="primary" @click="doUpload" :loading="uploading" :disabled="!singleFile" style="margin-top:12px">
             {{ uploading ? '处理中...' : '上传并导入' }}
@@ -18,9 +26,10 @@
 
         <!-- ZIP 压缩包上传 -->
         <el-tab-pane label="📦 ZIP压缩包" name="zip">
+          <div style="margin-bottom:8px;color:#889;font-size:0.8rem">支持内含 CSV (.csv)、Parquet (.parquet)、TXT (.txt) 文件的 ZIP 压缩包</div>
           <el-upload drag :auto-upload="false" :on-change="onZipChange" :limit="1" accept=".zip">
             <el-icon style="font-size:48px"><FolderOpened /></el-icon>
-            <div>拖拽或点击上传 ZIP 压缩包（内含CSV文件）</div>
+            <div>拖拽或点击上传 ZIP 压缩包</div>
           </el-upload>
           <el-button type="primary" @click="doUploadZip" :loading="zipUploading" :disabled="!zipFile" style="margin-top:12px">
             {{ zipUploading ? '解压分析中...' : '上传ZIP并导入' }}
@@ -28,10 +37,11 @@
         </el-tab-pane>
 
         <!-- 多文件上传 -->
-        <el-tab-pane label="📋 多个CSV" name="multi">
-          <el-upload drag :auto-upload="false" :on-change="onMultiChange" multiple accept=".csv">
+        <el-tab-pane label="📋 多文件上传" name="multi">
+          <div style="margin-bottom:8px;color:#889;font-size:0.8rem">支持批量上传 CSV (.csv)、Parquet (.parquet)、TXT (.txt) 文件</div>
+          <el-upload drag :auto-upload="false" :on-change="onMultiChange" multiple accept=".csv,.parquet,.txt">
             <el-icon style="font-size:48px"><UploadFilled /></el-icon>
-            <div>拖拽或点击上传多个 CSV 文件</div>
+            <div>拖拽或点击上传多个文件</div>
           </el-upload>
           <div v-if="multiFiles.length" style="margin-top:8px;color:#889">
             已选择 {{ multiFiles.length }} 个文件：
@@ -68,7 +78,7 @@
       <div v-if="processResult.stage_distribution" style="margin-top:16px">
         <strong>睡眠阶段分布：</strong>
         <el-tag v-for="s in processResult.stage_distribution" :key="s.name" style="margin:4px" size="small">
-          {{ s.name }}: {{ s.value }}分钟 ({{ s.percent }}%)
+          {{ s.name }}: {{ formatMinutes(s.value) }} ({{ s.percent }}%)
         </el-tag>
       </div>
     </el-card>
@@ -86,11 +96,21 @@
         <el-table-column prop="sleepQualityScore" label="质量分" width="90" sortable>
           <template #default="{ row }"><el-tag :type="row.sleepQualityScore>=8?'success':row.sleepQualityScore>=5?'warning':'danger'" size="small">{{ row.sleepQualityScore }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="totalSleepMinutes" label="总睡眠" width="90" />
-        <el-table-column prop="deepSleepTime" label="深睡" width="70" />
-        <el-table-column prop="shallowSleepTime" label="浅睡" width="70" />
-        <el-table-column prop="REMTime" label="REM" width="70" />
-        <el-table-column prop="wakeTime" label="清醒" width="70" />
+        <el-table-column prop="totalSleepMinutes" label="总睡眠" width="110">
+          <template #default="{ row }">{{ formatMinutesShort(row.totalSleepMinutes) }}</template>
+        </el-table-column>
+        <el-table-column prop="deepSleepTime" label="深睡" width="90">
+          <template #default="{ row }">{{ formatMinutesShort(row.deepSleepTime) }}</template>
+        </el-table-column>
+        <el-table-column prop="shallowSleepTime" label="浅睡" width="90">
+          <template #default="{ row }">{{ formatMinutesShort(row.shallowSleepTime) }}</template>
+        </el-table-column>
+        <el-table-column prop="REMTime" label="REM" width="90">
+          <template #default="{ row }">{{ formatMinutesShort(row.REMTime) }}</template>
+        </el-table-column>
+        <el-table-column prop="wakeTime" label="清醒" width="90">
+          <template #default="{ row }">{{ formatMinutesShort(row.wakeTime) }}</template>
+        </el-table-column>
         <el-table-column prop="sleepEfficiency" label="效率" width="80">
           <template #default="{ row }">{{ (row.sleepEfficiency*100).toFixed(1) }}%</template>
         </el-table-column>
@@ -110,6 +130,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { uploadCsv, uploadZip, uploadMulti, getRecords, deleteRecord, runPreprocess, processAll } from '../api/sleep'
 import { ElMessage } from 'element-plus'
+import { formatMinutes, formatMinutesShort } from '../utils/format'
 
 const uploadMode = ref('single')
 const singleFile = ref(null)
@@ -132,7 +153,7 @@ const resultCards = computed(() => {
   return [
     { label: '记录条数', value: s.total_records },
     { label: '平均质量分', value: s.avg_quality_score },
-    { label: '平均睡眠(分钟)', value: s.avg_sleep_minutes },
+    { label: '平均睡眠', value: formatMinutes(s.avg_sleep_minutes) },
     { label: '平均效率', value: (s.avg_efficiency * 100).toFixed(1) + '%' },
   ]
 })

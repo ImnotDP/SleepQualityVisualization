@@ -16,9 +16,15 @@
         <el-table-column prop="sleepQualityScore" label="睡眠质量分" width="120" sortable>
           <template #default="{ row }"><el-tag :type="tagType(row.sleepQualityScore)">{{ row.sleepQualityScore }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="totalSleepMinutes" label="总睡眠(分钟)" width="130" />
-        <el-table-column prop="deepSleepTime" label="深睡" width="90" />
-        <el-table-column prop="REMTime" label="REM" width="90" />
+        <el-table-column prop="totalSleepMinutes" label="总睡眠" width="130">
+          <template #default="{ row }">{{ formatMinutesShort(row.totalSleepMinutes) }}</template>
+        </el-table-column>
+        <el-table-column prop="deepSleepTime" label="深睡" width="90">
+          <template #default="{ row }">{{ formatMinutesShort(row.deepSleepTime) }}</template>
+        </el-table-column>
+        <el-table-column prop="REMTime" label="REM" width="90">
+          <template #default="{ row }">{{ formatMinutesShort(row.REMTime) }}</template>
+        </el-table-column>
         <el-table-column prop="sleepEfficiency" label="效率" width="90">
           <template #default="{ row }">{{ (row.sleepEfficiency*100).toFixed(1) }}%</template>
         </el-table-column>
@@ -32,17 +38,18 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { getPersonalStats, getRecords } from '../api/sleep'
+import { formatMinutesShort } from '../utils/format'
 
 const loading = ref(false)
 const records = ref([])
 const stats = reactive({ total_records: 0, avg_quality_score: 0, avg_sleep_minutes: 0, avg_efficiency: 0, date_range_start: '', date_range_end: '' })
 
 const cards = [
-  { label: '记录条数', value: stats.total_records },
-  { label: '平均质量分', value: stats.avg_quality_score },
-  { label: '平均睡眠(分钟)', value: stats.avg_sleep_minutes },
-  { label: '平均效率', value: (stats.avg_efficiency*100).toFixed(1)+'%' },
-].map(c => ({ ...c, get value() { return c._get() }, _get() { return c._val }, set _val(v) { c._val = v } }))
+  { label: '记录条数', get value() { return stats.total_records } },
+  { label: '平均质量分', get value() { return stats.avg_quality_score } },
+  { label: '平均睡眠', get value() { return formatMinutes(stats.avg_sleep_minutes) } },
+  { label: '平均效率', get value() { return (stats.avg_efficiency*100).toFixed(1)+'%' } },
+]
 
 function tagType(s) { return s>=80?'success':s>=60?'warning':'danger' }
 
@@ -52,11 +59,6 @@ onMounted(async () => {
     const [sRes, rRes] = await Promise.all([getPersonalStats(), getRecords(1, 5)])
     Object.assign(stats, sRes.data.stats || {})
     records.value = rRes.data.data || []
-    // update card values
-    cards[0]._val = stats.total_records
-    cards[1]._val = stats.avg_quality_score
-    cards[2]._val = stats.avg_sleep_minutes
-    cards[3]._val = (stats.avg_efficiency*100).toFixed(1)+'%'
   } catch (e) { console.error(e) }
   finally { loading.value = false }
 })

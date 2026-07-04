@@ -48,6 +48,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { getReports, getReportDetail } from '../api/sleep'
+import { formatMinutes } from '../utils/format'
+
+const timeKeys = new Set(['totalSleepMinutes','deepSleepTime','shallowSleepTime','REMTime','wakeTime'])
 
 const loading = ref(false)
 const reports = ref([])
@@ -59,7 +62,7 @@ const paramRows = computed(() => {
   if (!detailReport.value?.input_params) return []
   const labels = { totalSleepMinutes:'总睡眠时长', deepSleepTime:'深睡时长', REMTime:'REM时长',
     sleepEfficiency:'睡眠效率', daySteps:'步数', avgHeartRate:'平均心率' }
-  return Object.entries(detailReport.value.input_params).map(([k,v])=>({label:labels[k]||k,value:v}))
+  return Object.entries(detailReport.value.input_params).map(([k,v])=>({label:labels[k]||k,value:timeKeys.has(k)?formatMinutes(v):v}))
 })
 const impRows = computed(() => {
   if (!detailReport.value?.feature_importance) return []

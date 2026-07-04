@@ -96,6 +96,23 @@ def predict_score():
                              ).predict(X_input)[0]), 2)
     predicted = max(1, min(10, predicted))
 
+    # 计算每个模型的预测值
+    all_predictions = {}
+    scaler_models = {"linear", "svr", "ridge", "lasso", "elastic_net", "bayesian_ridge", "knn"}
+    for name, info in reg_results.items():
+        if not isinstance(info, dict) or "model" not in info:
+            continue
+        try:
+            model = info["model"]
+            if name in scaler_models and info.get("scaler"):
+                X_in = info["scaler"].transform(X_input)
+                pred_val = round(float(model.predict(X_in)[0]), 2)
+            else:
+                pred_val = round(float(model.predict(X_input)[0]), 2)
+            all_predictions[name] = max(1, min(10, pred_val))
+        except Exception:
+            pass
+
     # 获取特征重要性（优先从RF/GBRT/XGBoost的feature_importance，其次从线性模型coef）
     fi = {}
     for model_key in ["rf", "gradient_boosting", "xgboost"]:
@@ -156,6 +173,7 @@ def predict_score():
         "suggestions": suggestions,
         "suggestions_source": "deepseek" if deepseek_suggestions else "rule_based",
         "model_comparison": model_comparison,
+        "all_predictions": all_predictions,
         "best_model": best_name,
         "best_model_name": algo_names.get(best_name, best_name),
         "report_id": report.id,
@@ -165,14 +183,7 @@ def predict_score():
 @predict_bp.route("/feature_analysis", methods=["GET"])
 @login_required
 def feature_analysis():
-    """特征重要性分析与全模型对比（优先读缓存）"""
-    # 优先尝试从缓存加载
-    from visualize import _load_model_cache, _build_model_cache
-    cache = _load_model_cache()
-    if cache:
-        return jsonify(cache)
-
-    # 无缓存 → 用当前用户数据训练
+    """特征重要性分析与全模型对比（每次实时训练）"""
     user = get_current_user()
     records = SleepRecord.query.filter_by(user_id=user.id).all()
     if len(records) < 5:
@@ -189,6 +200,7 @@ def feature_analysis():
         return jsonify({"error": reg_results["error"]}), 400
 
     fi = {}
+    per_model_fi = {}
     best_name = reg_results.get("best_model", "rf")
     best_info = reg_results.get(best_name, {})
     if "feature_importance" in best_info:
@@ -206,10 +218,24 @@ def feature_analysis():
                 "mae": v.get("mae"),
                 "rmse": v.get("rmse"),
             }
+            # 每个模型的特征重要性
+            if "feature_importance" in v:
+                fi_list = v["feature_importance"]
+                per_model_fi[name] = {
+                    FEATURE_LABELS_ZH.get(FEATURE_COLS[i], FEATURE_COLS[i]): round(float(fi_list[i]), 4)
+                    for i in range(min(len(FEATURE_COLS), len(fi_list)))
+                }
+            elif "coef" in v:
+                coef_list = v["coef"]
+                per_model_fi[name] = {
+                    FEATURE_LABELS_ZH.get(FEATURE_COLS[i], FEATURE_COLS[i]): round(float(coef_list[i]), 4)
+                    for i in range(min(len(FEATURE_COLS), len(coef_list)))
+                }
 
     return jsonify({
         "feature_importance": fi,
         "model_comparison": model_comparison,
+        "per_model_fi": per_model_fi,
         "best_model": best_name,
         "best_model_name": algo_names.get(best_name, best_name),
         "n_samples": int(len(X)),

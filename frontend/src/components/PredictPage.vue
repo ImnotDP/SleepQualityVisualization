@@ -35,6 +35,21 @@
               </el-col>
             </el-row>
           </div>
+          <!-- 各模型预测结果 -->
+          <div v-if="result.all_predictions" style="margin-bottom:16px">
+            <h4>🔢 各模型预测分数对比</h4>
+            <v-chart class="chart" :option="predChartOption" autoresize />
+            <el-table :data="predictionList" size="small" stripe max-height="350" style="margin-top:8px">
+              <el-table-column prop="name" label="算法模型" width="200" />
+              <el-table-column prop="score" label="预测分数" width="120" sortable>
+                <template #default="{row}">
+                  <span :style="{color:row.score>=7?'#67c23a':row.score>=5?'#409eff':'#e6a23c',fontWeight:row.isBest?'bold':'normal',fontSize:row.isBest?'1.1em':'1em'}">
+                    {{ row.score }} {{ row.isBest ? '⭐' : '' }}
+                  </span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
           <!-- 模型对比 - 全算法表格 -->
           <div v-if="result.model_comparison" style="margin-bottom:16px">
             <h4>🤖 全模型对比 (R²)</h4>
@@ -79,15 +94,22 @@
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { BarChart } from 'echarts/charts'
+import { TitleComponent, TooltipComponent, GridComponent } from 'echarts/components'
 import { predictScore } from '../api/sleep'
 import { ElMessage } from 'element-plus'
 
+use([CanvasRenderer, BarChart, TitleComponent, TooltipComponent, GridComponent])
+
 const fields = [
-  { key:'totalSleepMinutes', label:'总睡眠时长(分钟)', step:10 },
-  { key:'deepSleepTime', label:'深睡时长(分钟)', step:5 },
-  { key:'shallowSleepTime', label:'浅睡时长(分钟)', step:5 },
-  { key:'REMTime', label:'REM时长(分钟)', step:5 },
-  { key:'wakeTime', label:'清醒时长(分钟)', step:5 },
+  { key:'totalSleepMinutes', label:'总睡眠时长', step:10 },
+  { key:'deepSleepTime', label:'深睡时长', step:5 },
+  { key:'shallowSleepTime', label:'浅睡时长', step:5 },
+  { key:'REMTime', label:'REM时长', step:5 },
+  { key:'wakeTime', label:'清醒时长', step:5 },
   { key:'sleepEfficiency', label:'睡眠效率(0-1)', step:0.05 },
   { key:'deepSleepRatio', label:'深睡比例(0-1)', step:0.05 },
   { key:'REMRatio', label:'REM比例(0-1)', step:0.05 },
@@ -125,6 +147,48 @@ const modelCompareList = computed(() => {
     .sort((a, b) => (b.r2 || 0) - (a.r2 || 0))
 })
 
+const algoNames = {
+  svr:'支持向量回归(SVR)',linear:'线性回归(Linear)',rf:'随机森林(RF)',
+  gradient_boosting:'梯度提升(GBRT)',xgboost:'XGBoost',decision_tree:'决策树(DT)',
+  ridge:'岭回归(Ridge)',lasso:'套索回归(Lasso)',elastic_net:'弹性网络(ElasticNet)',
+  knn:'K近邻回归(KNN)',bayesian_ridge:'贝叶斯岭回归(BayesianRidge)',adaboost:'自适应增强(AdaBoost)',
+}
+
+const predictionList = computed(() => {
+  if (!result.value?.all_predictions) return []
+  const best = result.value.best_model
+  return Object.entries(result.value.all_predictions)
+    .map(([key, score]) => ({
+      key,
+      name: algoNames[key] || key,
+      score,
+      isBest: key === best,
+    }))
+    .sort((a, b) => b.score - a.score)
+})
+
+const predChartOption = computed(() => {
+  const list = predictionList.value
+  if (!list.length) return {}
+  const names = list.map(e => e.name)
+  const scores = list.map(e => e.score)
+  const colors = scores.map(s => s >= 7 ? '#67c23a' : s >= 5 ? '#409eff' : '#e6a23c')
+  return {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: '3%', right: '8%', top: '5%', bottom: '8%', containLabel: true },
+    xAxis: { type: 'value', name: '预测分数', max: 10, axisLabel: { color: '#889' } },
+    yAxis: { type: 'category', data: names.reverse(), axisLabel: { color: '#ccc', fontSize: 11 }, inverse: true },
+    series: [{
+      type: 'bar', data: scores.reverse().map((v, i) => ({
+        value: v,
+        itemStyle: { color: colors.reverse()[i], borderRadius: [0, 4, 4, 0] }
+      })),
+      label: { show: true, position: 'right', color: '#aaa', fontSize: 10, formatter: '{c}' },
+      barMaxWidth: 28,
+    }],
+  }
+})
+
 const ratingType = computed(() => {
   const r = result.value?.rating
   if (r==='优秀') return 'success'
@@ -147,4 +211,5 @@ async function doPredict() {
 
 <style scoped>
 .best-model { border:2px solid #67c23a; }
+.chart { width: 100%; height: 350px; }
 </style>

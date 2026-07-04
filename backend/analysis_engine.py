@@ -310,6 +310,7 @@ def train_regression_models(X: np.ndarray, y: np.ndarray) -> dict:
             "r2": round(r2_score(y_test, dt_pred), 4),
             "mae": round(mean_absolute_error(y_test, dt_pred), 4),
             "rmse": round(np.sqrt(mean_squared_error(y_test, dt_pred)), 4),
+            "feature_importance": dt_gs.best_estimator_.feature_importances_.tolist(),
         }
     except Exception as e:
         log.warning("DecisionTree 训练失败：%s", e)
@@ -428,9 +429,25 @@ def train_regression_models(X: np.ndarray, y: np.ndarray) -> dict:
             "r2": round(r2_score(y_test, ada_pred), 4),
             "mae": round(mean_absolute_error(y_test, ada_pred), 4),
             "rmse": round(np.sqrt(mean_squared_error(y_test, ada_pred)), 4),
+            "feature_importance": ada_gs.best_estimator_.feature_importances_.tolist(),
         }
     except Exception as e:
         log.warning("AdaBoost 训练失败：%s", e)
+
+    # --- 为 SVR 和 KNN 计算置换特征重要性（permutation importance）---
+    # 原理：随机打乱单个特征后观察模型性能下降程度，下降越多说明该特征越重要
+    try:
+        from sklearn.inspection import permutation_importance
+        for model_key in ["svr", "knn"]:
+            if model_key in results and "model" in results[model_key]:
+                model = results[model_key]["model"]
+                X_eval = X_test_s if results[model_key].get("scaler") else X_test
+                perm_result = permutation_importance(
+                    model, X_eval, y_test, n_repeats=10, random_state=SEED, n_jobs=-1
+                )
+                results[model_key]["feature_importance"] = perm_result.importances_mean.tolist()
+    except Exception as e:
+        log.warning("置换特征重要性计算失败：%s", e)
 
     # --- 选出最佳模型（基于R²） ---
     best = max(results.keys(), key=lambda k: results[k].get("r2", -999))

@@ -29,21 +29,17 @@
       <v-chart class="chart" :option="trendOption" autoresize />
     </el-card>
 
-    <!-- 散点图 + 饼图 -->
-    <el-row :gutter="20" style="margin-top:20px">
-      <el-col :xs="24" :md="12">
-        <el-card class="card-dark" v-if="scatterReady">
-          <template #header>🎯 心率 vs 睡眠质量</template>
-          <v-chart class="chart" :option="scatterHROption" autoresize />
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :md="12">
-        <el-card class="card-dark" v-if="pieReady">
-          <template #header>🍰 睡眠阶段占比</template>
-          <v-chart class="chart" :option="pieOption" autoresize />
-        </el-card>
-      </el-col>
-    </el-row>
+    <!-- 散点图 -->
+    <el-card class="card-dark" style="margin-top:20px" v-if="scatterReady">
+      <template #header>🎯 心率 vs 睡眠质量</template>
+      <v-chart class="chart" :option="scatterHROption" autoresize />
+    </el-card>
+
+    <!-- 饼图 -->
+    <el-card class="card-dark" style="margin-top:20px" v-if="pieReady">
+      <template #header>🍰 睡眠阶段占比</template>
+      <v-chart class="chart" :option="pieOption" autoresize />
+    </el-card>
 
     <!-- 热力图 -->
     <el-card class="card-dark" style="margin-top:20px" v-if="corrReady">
@@ -73,6 +69,7 @@ import { LineChart, BarChart, PieChart, ScatterChart, HeatmapChart } from 'echar
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent, VisualMapComponent } from 'echarts/components'
 import { getPublicSummary, getPublicTrend, getPublicStagePie, getPublicCorrelation, getPublicScatter, getCurrentUser } from '../api/sleep'
 import { ElMessage } from 'element-plus'
+import { formatMinutes } from '../utils/format'
 
 use([CanvasRenderer, LineChart, BarChart, PieChart, ScatterChart, HeatmapChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, VisualMapComponent])
 
@@ -98,7 +95,7 @@ const cards = computed(() => {
   return [
     { label: '记录天数', value: s.total_records || 0 },
     { label: '平均质量分', value: s.avg_quality_score || '-' },
-    { label: '平均睡眠(分钟)', value: s.avg_sleep_minutes || '-' },
+    { label: '平均睡眠', value: formatMinutes(s.avg_sleep_minutes) || '-' },
     { label: '平均效率', value: s.avg_efficiency ? (s.avg_efficiency * 100).toFixed(1) + '%' : '-' },
   ]
 })
@@ -162,11 +159,18 @@ onMounted(async () => {
 
     if (scatterRes.status === 'fulfilled' && hasData.value) {
       const s = scatterRes.value.data
+      const data = s.hr_vs_quality || []
+      const xs = data.map(d => d[0]), ys = data.map(d => d[1])
+      const xMin = Math.min(...xs), xMax = Math.max(...xs)
+      const yMin = Math.min(...ys), yMax = Math.max(...ys)
+      const xPad = (xMax - xMin) * 0.08 || 1
+      const yPad = (yMax - yMin) * 0.1 || 0.5
       scatterHROption.value = {
         tooltip: {},
-        xAxis: { name: '心率', axisLabel: { color: '#889' } },
-        yAxis: { name: '质量分', axisLabel: { color: '#889' } },
-        series: [{ type: 'scatter', data: s.hr_vs_quality, itemStyle: { color: '#ff6b6b' } }],
+        grid: { left: '12%', right: '5%', top: '8%', bottom: '10%' },
+        xAxis: { name: '心率(bpm)', nameLocation: 'center', nameGap: 28, axisLabel: { color: '#889' }, min: xMin - xPad, max: xMax + xPad },
+        yAxis: { name: '质量分', axisLabel: { color: '#889' }, min: Math.max(0, yMin - yPad), max: Math.min(10, yMax + yPad) },
+        series: [{ type: 'scatter', data, symbolSize: 7, itemStyle: { color: '#ff6b6b', opacity: 0.7 } }],
       }
       scatterReady.value = true
     }
@@ -197,13 +201,14 @@ onMounted(async () => {
           mat.push([j, i, c.correlation_matrix[`${f1}|${f2}`] || 0])
         })
       })
+      const xLabels = fields.map(f => labels[f] || f)
       corrOption.value = {
-        tooltip: {},
-        grid: { left: '15%', bottom: '15%' },
-        xAxis: { type: 'category', data: fields.map(f => labels[f] || f), axisLabel: { color: '#889', rotate: 30, fontSize: 10 } },
-        yAxis: { type: 'category', data: fields.map(f => labels[f] || f), axisLabel: { color: '#889', fontSize: 10 } },
+        tooltip: { formatter: (p) => { const xl = xLabels[p.value[0]] || ''; const yl = xLabels[p.value[1]] || ''; return `<b>${xl}</b> × <b>${yl}</b><br/>相关系数: ${p.value[2]}`; } },
+        grid: { left: '18%', bottom: '15%', top: '2%', right: '5%' },
+        xAxis: { type: 'category', data: xLabels, axisLabel: { color: '#889', rotate: 35, fontSize: 9 }, position: 'bottom' },
+        yAxis: { type: 'category', data: xLabels, axisLabel: { color: '#889', fontSize: 9 } },
         visualMap: { min: -1, max: 1, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: ['#313695', '#4575b4', '#74add1', '#abd9e9', '#fee090', '#f46d43', '#d73027', '#a50026'] } },
-        series: [{ type: 'heatmap', data: mat, label: { show: true, fontSize: 8 } }],
+        series: [{ type: 'heatmap', data: mat, label: { show: true, fontSize: 10, fontWeight: 'bold', color: (p) => { const v = p.value[2]; return Math.abs(v) > 0.5 ? '#fff' : '#222'; } }, emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.5)' } } }],
       }
       corrReady.value = true
     }

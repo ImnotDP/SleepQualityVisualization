@@ -6,6 +6,19 @@ from auth import login_required, get_current_user, admin_required
 log = logging.getLogger(__name__)
 vis_bp = Blueprint("visualize", __name__, url_prefix="/api/vis")
 
+# 特征中文标签（用于模型缓存）
+FEATURE_LABELS_ZH = {
+    "totalSleepMinutes": "总睡眠时长(分钟)", "deepSleepTime": "深睡时长(分钟)",
+    "shallowSleepTime": "浅睡时长(分钟)", "REMTime": "REM时长(分钟)",
+    "wakeTime": "清醒时长(分钟)", "sleepEfficiency": "睡眠效率",
+    "deepSleepRatio": "深睡比例", "REMRatio": "REM比例",
+    "daySteps": "日步数", "dayCalories": "日卡路里消耗",
+    "avgHeartRate": "平均心率(bpm)",
+    "temperature": "环境温度(°C)", "humidity": "环境湿度(%)",
+    "noise_db": "噪声分贝(dB)", "spo2": "血氧饱和度(%)",
+    "movement_freq": "体动频率(次/分钟)",
+}
+
 
 def _get_user_records(user_id: int):
     return SleepRecord.query.filter_by(user_id=user_id).order_by(
@@ -212,9 +225,25 @@ def sleep_structure():
 @admin_required
 def global_correlation():
     records = SleepRecord.query.all()
-    fields = ["sleepQualityScore", "totalSleepMinutes", "deepSleepTime",
-              "shallowSleepTime", "REMTime", "wakeTime",
-              "sleepEfficiency", "daySteps", "avgHeartRate"]
+    fields = [
+        "sleepQualityScore", "totalSleepMinutes", "deepSleepTime",
+        "shallowSleepTime", "REMTime", "wakeTime", "sleepEfficiency",
+        "deepSleepRatio", "REMRatio", "daySteps", "dayCalories",
+        "avgHeartRate", "nightAvgHR",
+        "temperature", "humidity", "noise_db", "spo2", "movement_freq",
+    ]
+    field_labels = {
+        "sleepQualityScore": "睡眠质量分", "totalSleepMinutes": "总睡眠时长",
+        "deepSleepTime": "深睡时长", "shallowSleepTime": "浅睡时长",
+        "REMTime": "REM时长", "wakeTime": "清醒时长",
+        "sleepEfficiency": "睡眠效率", "deepSleepRatio": "深睡比例",
+        "REMRatio": "REM比例", "daySteps": "日步数",
+        "dayCalories": "卡路里", "avgHeartRate": "平均心率",
+        "nightAvgHR": "夜间心率",
+        "temperature": "温度(°C)", "humidity": "湿度(%)",
+        "noise_db": "噪声(dB)", "spo2": "血氧(%)",
+        "movement_freq": "体动频率",
+    }
     data_points = {f: [getattr(r, f, 0) or 0 for r in records] for f in fields}
     matrix = {}
     for f1 in fields:
@@ -229,7 +258,8 @@ def global_correlation():
             matrix[f"{f1}|{f2}"] = round(
                 sum((x[i]-mx)*(y[i]-my) for i in range(n))/(sx*sy), 4)
     return jsonify({
-        "fields": fields, "correlation_matrix": matrix,
+        "fields": fields, "field_labels": field_labels,
+        "correlation_matrix": matrix,
         "total_records": len(records),
     })
 
@@ -348,13 +378,20 @@ def public_correlation():
 @vis_bp.route("/public/scatter", methods=["GET"])
 def public_scatter():
     records = _get_public_records()
-    hr_vs, steps_vs = [], []
+    hr_vs, steps_vs, temp_vs, noise_vs = [], [], [], []
     for r in records:
         if r.avgHeartRate and r.sleepQualityScore:
             hr_vs.append([round(r.avgHeartRate, 1), round(r.sleepQualityScore, 1)])
         if r.daySteps and r.sleepQualityScore:
             steps_vs.append([round(r.daySteps), round(r.sleepQualityScore, 1)])
-    return jsonify({"hr_vs_quality": hr_vs, "steps_vs_quality": steps_vs})
+        if r.temperature and r.sleepQualityScore:
+            temp_vs.append([round(r.temperature, 1), round(r.sleepQualityScore, 1)])
+        if r.noise_db and r.sleepQualityScore:
+            noise_vs.append([round(r.noise_db, 1), round(r.sleepQualityScore, 1)])
+    return jsonify({
+        "hr_vs_quality": hr_vs, "steps_vs_quality": steps_vs,
+        "temperature_vs_quality": temp_vs, "noise_vs_quality": noise_vs,
+    })
 
 
 @vis_bp.route("/public/sleep_structure", methods=["GET"])
@@ -526,11 +563,9 @@ def public_environment_vs_quality():
 
 # ========== 公开全模型对比 ==========
 
-MODEL_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".model_cache.json")
 
-
-def _build_model_cache():
-    """训练模型并缓存结果到 JSON 文件"""
+def _build_model_data():
+    """每次启动时实时训练模型，不缓存"""
     import numpy as np
     records = _get_public_records()
     if len(records) < 5:
@@ -557,6 +592,7 @@ def _build_model_cache():
 
     algo_names = reg_results.get("algorithm_names", {})
     model_comparison = {}
+    per_model_fi = {}
     for name, info in reg_results.items():
         if isinstance(info, dict) and "r2" in info:
             model_comparison[name] = {
@@ -565,52 +601,45 @@ def _build_model_cache():
                 "mae": info.get("mae"),
                 "rmse": info.get("rmse"),
             }
+            # 提取每个模型的特征重要性
+            if "feature_importance" in info:
+                fi_list = info["feature_importance"]
+                per_model_fi[name] = {
+                    FEATURE_LABELS_ZH.get(FEATURE_COLS[i], FEATURE_COLS[i]): round(float(fi_list[i]), 4)
+                    for i in range(min(len(FEATURE_COLS), len(fi_list)))
+                }
+            elif "coef" in info:
+                coef_list = info["coef"]
+                per_model_fi[name] = {
+                    FEATURE_LABELS_ZH.get(FEATURE_COLS[i], FEATURE_COLS[i]): round(float(coef_list[i]), 4)
+                    for i in range(min(len(FEATURE_COLS), len(coef_list)))
+                }
 
-    cache = {
+    return {
         "model_comparison": model_comparison,
         "best_model": reg_results.get("best_model", ""),
         "best_model_name": algo_names.get(reg_results.get("best_model", ""), ""),
         "n_samples": int(len(X)),
         "algorithm_names": algo_names,
+        "per_model_fi": per_model_fi,
     }
-    with open(MODEL_CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(cache, f, ensure_ascii=False)
-    log.info("模型缓存已更新：%d 个模型", len(model_comparison))
-    return cache
-
-
-def _load_model_cache():
-    """加载缓存的模型对比结果"""
-    if os.path.exists(MODEL_CACHE_FILE):
-        try:
-            with open(MODEL_CACHE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return None
 
 
 @vis_bp.route("/public/model_comparison", methods=["GET"])
 def public_model_comparison():
-    """公开版全模型算法对比：优先读缓存，无缓存时触发后台训练并返回提示"""
-    cache = _load_model_cache()
-    if cache:
-        return jsonify(cache)
-
-    # 无缓存 → 尝试快速构建（同步，可能较慢）
+    """公开版全模型算法对比：每次实时训练（不缓存）"""
     records = _get_public_records()
     if len(records) < 5:
         return jsonify({"error": "数据不足，至少需要5条记录"}), 400
 
     try:
-        cache = _build_model_cache()
-        if cache:
-            return jsonify(cache)
+        data = _build_model_data()
+        if data:
+            return jsonify(data)
     except Exception as e:
-        log.warning("模型缓存构建失败：%s", e)
+        log.warning("模型训练失败：%s", e)
 
     return jsonify({
-        "error": "模型正在训练中",
-        "message": "模型训练需要1-2分钟，请稍后刷新页面",
-        "pending": True,
+        "error": "模型训练失败",
+        "message": "请稍后重试",
     })

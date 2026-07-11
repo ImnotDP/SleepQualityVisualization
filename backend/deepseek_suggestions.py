@@ -95,7 +95,11 @@ def generate_suggestions_via_deepseek(
             "temperature": temperature,
         }
 
-        resp = requests.post(
+        # 创建会话，trust_env=False 禁用系统代理环境变量（如 ALL_PROXY=socks5://...）
+        # 避免因缺少 PySocks 导致 "Missing dependencies for SOCKS support" 错误
+        session = requests.Session()
+        session.trust_env = False
+        resp = session.post(
             url,
             headers=headers,
             json=payload,

@@ -178,8 +178,8 @@ body { background: #0f1923; color: #e0e0e0; font-family: 'Segoe UI', sans-serif;
 
 /* ====== 主内容 ====== */
 .app-main {
-  min-height: 100vh; padding: 20px;
-  max-width: 1400px; margin: 0 auto;
+  min-height: calc(100vh - 56px); padding: 10px 12px;
+  max-width: 100%; margin: 0 auto;
 }
 
 /* 公共卡片样式 */

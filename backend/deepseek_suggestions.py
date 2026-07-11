@@ -65,13 +65,7 @@ def generate_suggestions_via_deepseek(
         return _generate_rule_based_suggestions(sleep_data, predicted_score)
 
     try:
-        from openai import OpenAI
-
-        client = OpenAI(
-            api_key=api_key,
-            base_url=api_base,
-            timeout=timeout,
-        )
+        import requests
 
         # 构建提示词
         system_prompt = """你是一位专业的睡眠医学专家和健康顾问。请根据用户提供的睡眠数据指标，
@@ -86,22 +80,36 @@ def generate_suggestions_via_deepseek(
 
         user_prompt = _build_user_prompt(sleep_data, predicted_score, feature_importance)
 
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
+        url = f"{api_base}/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+        payload = {
+            "model": model,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
 
-        suggestions = response.choices[0].message.content.strip()
+        resp = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        suggestions = data["choices"][0]["message"]["content"].strip()
         log.info("DeepSeek API 建议生成成功（%d 字符）", len(suggestions))
         return suggestions
 
-    except ImportError:
-        log.warning("openai 库未安装，使用规则引擎生成建议")
+    except ImportError as e:
+        log.warning("requests 库未安装，使用规则引擎生成建议：%s", e)
         return _generate_rule_based_suggestions(sleep_data, predicted_score)
     except Exception as e:
         log.warning("DeepSeek API 调用失败（%s），回退规则引擎", e)

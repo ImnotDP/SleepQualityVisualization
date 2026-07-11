@@ -427,8 +427,8 @@ Listening on http://localhost:3000
 
 如果你修改了 `config.txt` 中的 `FLASK_PORT`：
 
-1. 同步修改 `FRONTEND_API_TARGET=http://127.0.0.1:<新端口>`
-2. 重启后端和前端服务
+1. 同步修改 `FLASK_PORT=<新端口>`
+2. 重启后端和前端服务（`serve.cjs` 会自动读取新的 `FLASK_PORT`）
 
 ---
 
@@ -475,14 +475,14 @@ Listening on http://localhost:3000
 | 功能 | 前端页面 | 后端接口 |
 |------|---------|---------|
 | 睡眠质量预测 | `/user/predict` 输入参数 | `POST /api/predict/score` |
-| 多模型对比 | 预测结果面板 | SVR / 线性回归 / 随机森林 |
-| 特征重要性分析 | 预测结果面板 | LinearRegression.coef_ / RF.feature_importances_ |
+| 多模型对比 | 预测结果面板 | SVR / LR / RF / GBRT / XGBoost 等12种算法 |
+| 特征重要性分析 | 预测结果面板 | 最佳模型系数 / 置换特征重要性 |
 | 个性化建议 | 预测结果面板 | 规则引擎自动生成 |
 | 历史报告 | `/user/center` 个人中心 | `GET /api/predict/reports` |
 
-预测流程：用户输入生理参数（或留空使用历史均值）→ SVR/LR/RF 三模型对比选最优 → 输出 1-10 质量分 + 各特征影响权重 + 中文改善建议。
+预测流程：用户输入生理参数（或留空使用历史均值）→ 12种回归算法对比自动选最优 → 输出 1-10 质量分 + 各特征影响权重 + 中文改善建议。
 
-> **模型性能**：线性回归 R²=0.9998，MSE<0.01（5折交叉验证）。运行 `python backend/evaluate_model.py` 查看完整评估报告（含 SHAP 可解释性分析）。
+> **模型性能**：系统训练 12 种回归模型（SVR、线性回归、随机森林、梯度提升、XGBoost、决策树、Ridge、Lasso、ElasticNet、KNN、贝叶斯岭回归、AdaBoost），通过 GridSearchCV 超参数调优后自动选择 R² 最高的模型进行预测。
 
 ### 模块五：管理员全局管理
 | 功能 | 前端页面 | 后端接口 |
@@ -528,7 +528,7 @@ Listening on http://localhost:3000
 | 10 | `REMRatio` | `FLOAT` | DEFAULT `0` | REM 比例 |
 | 11 | `sleepEfficiency` | `FLOAT` | DEFAULT `0` | 睡眠效率 |
 | 12 | `wakeRatio` | `FLOAT` | DEFAULT `0` | 清醒比例 |
-| 13 | `sleepQualityScore` | `FLOAT` | DEFAULT `0` | 睡眠质量分 (0-100) |
+| 13 | `sleepQualityScore` | `FLOAT` | DEFAULT `0` | 睡眠质量分 (1-10) |
 | 14 | `daySteps` | `FLOAT` | DEFAULT `0` | 当日步数 |
 | 15 | `dayDistance` | `FLOAT` | DEFAULT `0` | 当日距离 (m) |
 | 16 | `dayRunDistance` | `FLOAT` | DEFAULT `0` | 跑步距离 (m) |
@@ -548,7 +548,7 @@ Listening on http://localhost:3000
 |---|------|------|------|------|
 | 1 | `id` | `INTEGER` | PK, AUTOINCREMENT | 报告唯一标识 |
 | 2 | `user_id` | `INTEGER` | FK → `users.id`, NOT NULL, INDEX | 所属用户 |
-| 3 | `predicted_score` | `FLOAT` | DEFAULT `0` | 预测睡眠质量分 (0-100) |
+| 3 | `predicted_score` | `FLOAT` | DEFAULT `0` | 预测睡眠质量分 (1-10) |
 | 4 | `input_params` | `TEXT` | DEFAULT `'{}'` | 用户输入参数 (JSON) |
 | 5 | `shap_values` | `TEXT` | DEFAULT `'{}'` | SHAP 特征贡献值 (JSON) |
 | 6 | `suggestions` | `TEXT` | DEFAULT `''` | 个性化改善建议 |
